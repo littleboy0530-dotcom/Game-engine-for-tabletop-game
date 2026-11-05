@@ -1,0 +1,23 @@
+# 마작 한 판: 뽑기 → (쯔모 | 버리기) → 다른 사람들의 반응(론/퐁/치) → 다음 뽑기
+nodes:
+  start:   { type: start, pos: [0, 120] }
+  deal:    { type: phase, label: 패 나누기, script: loop/deal.lua, pos: [120, 120] }
+  draw:    { type: phase, label: 뽑기, script: loop/draw.lua, pos: [280, 120] }
+  act:     { type: phase, label: 차례, pos: [440, 120] }
+  tsumo:   { type: action, label: 쯔모, script: loop/tsumo.lua, pos: [600, 20] }
+  discard: { type: action, label: 버리기, script: loop/discard.lua, pos: [600, 200] }
+  claims:  { type: phase, label: 반응 (론/퐁/치), script: loop/claims.lua, pos: [780, 200] }
+  result:  { type: phase, label: 결과, script: loop/result.lua, pos: [940, 20] }
+  end:     { type: end, pos: [1100, 20] }
+edges:
+  - [start, deal]
+  - [deal, draw]
+  - [draw, act]
+  - [draw, result]
+  - [act, tsumo]
+  - [act, discard]
+  - [tsumo, result]
+  - [discard, claims]
+  - [claims, draw]
+  - [claims, result]
+  - [result, end]

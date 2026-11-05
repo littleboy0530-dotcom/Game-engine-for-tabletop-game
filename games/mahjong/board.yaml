@@ -1,0 +1,7 @@
+id: table
+coords: none
+zones:
+  - { id: wall, name: 패산, layout: pile, visibility: hidden }
+  - { id: hand, name: 손패, perPlayer: true, layout: row, visibility: owner }
+  - { id: melds, name: 공개한 패, perPlayer: true, layout: row }
+  - { id: river, name: 버린 패, perPlayer: true, layout: row }

@@ -1,0 +1,13 @@
+name: 마작 (간단 규칙)
+players:
+  - { id: e, name: 동, color: "#b8322a" }
+  - { id: s, name: 남, color: "#2f6fb5" }
+  - { id: w, name: 서, color: "#2f7a3c" }
+  - { id: n, name: 북, color: "#7b4fb5" }
+
+# 136개의 패. suit: m(만) p(통) s(삭) z(자패), rank: 숫자
+cards: tiles.csv
+
+display:
+  player: { melds: 공개한 몸통 }
+  game: { wallLeft: 남은 패 }

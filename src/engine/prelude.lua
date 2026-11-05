@@ -516,8 +516,12 @@ end
 -- opts.priority = { "론", "퐁", "치" }, opts.accept = 1, opts.pass = "패스" (false면 패스 없음)
 ------------------------------------------------------------------------
 
+-- 우선순위 비교에 쓰는 이름: 테이블이면 kind(예: "치"), 없으면 label
 local function choiceLabel(c)
-  if type(c) == "table" and c.label then return c.label end
+  if type(c) == "table" and getmetatable(c) == nil then
+    if c.kind then return c.kind end
+    if c.label then return c.label end
+  end
   return describe(c)
 end
 

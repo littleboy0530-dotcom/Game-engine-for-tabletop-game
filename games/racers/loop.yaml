@@ -1,0 +1,15 @@
+# 들썩들썩 경주: 레이서 고르기 → (주사위 굴리기 → 결승 확인) 반복
+nodes:
+  start: { type: start, pos: [0, 100] }
+  draft: { type: phase, label: 레이서 고르기, script: loop/draft.lua, pos: [130, 100] }
+  turn:  { type: phase, label: 차례, pos: [300, 100] }
+  roll:  { type: action, label: 주사위 굴리기, script: loop/roll.lua, pos: [450, 100] }
+  judge: { type: phase, label: 결승 확인, script: loop/judge.lua, pos: [620, 100] }
+  end:   { type: end, pos: [780, 100] }
+edges:
+  - [start, draft]
+  - [draft, turn]
+  - [turn, roll]
+  - [roll, judge]
+  - [judge, turn]
+  - [judge, end]

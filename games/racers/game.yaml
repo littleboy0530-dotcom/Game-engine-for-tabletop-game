@@ -1,0 +1,26 @@
+name: 들썩들썩 경주 (능력 주사위)
+players:
+  - { id: p1, name: 하람, color: "#2f6fb5" }
+  - { id: p2, name: 누리, color: "#b5562b" }
+  - { id: p3, name: 도담, color: "#3c8c4a" }
+
+# 레이서마다 능력이 있다. 능력은 components/racers.lua의 트리거(on = { 이벤트 = 함수 })
+pieceTypes:
+  turtle:   { label: "🐢", text: "내가 1이나 2를 굴리면 +2" }
+  rabbit:   { label: "🐇", text: "다른 레이서를 지나갈 때마다 1칸 더 감" }
+  hedgehog: { label: "🦔", text: "누가 나를 지나가면 그 레이서를 1칸 뒤로" }
+  frog:     { label: "🐸", text: "내가 6을 굴리면 이동 후 2칸 더 감" }
+  fox:      { label: "🦊", text: "다른 레이서가 6을 굴리면 나도 1칸 앞으로" }
+  squirrel: { label: "🐿", text: "다른 레이서와 같은 칸에 멈추면 1칸 더 감" }
+
+diceTypes:
+  d6: {}
+
+scripts:
+  components: components/racers.lua
+
+setup:
+  - { type: d6, zone: dice }
+
+display:
+  player: { racer: 레이서, position: 위치 }
