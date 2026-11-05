@@ -1543,3 +1543,14 @@ select {
   opacity: 0;
   pointer-events: none;
 }
+
+.loop-edge.is-selected .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+}
+
+.outs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

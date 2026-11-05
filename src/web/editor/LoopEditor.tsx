@@ -1,5 +1,5 @@
 // Visual editor for the loop graph: add, move, connect and delete nodes, and pick what each node does.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow, Background, Controls, Handle, MarkerType, Position, applyNodeChanges,
   type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
@@ -56,6 +56,10 @@ export function LoopEditor({ files, setFiles }: TabProps) {
   const root = readDoc(files, 'loop.yaml');
   const [path, setPath] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  /** A selected connection ("a->b"), shown in the side panel with a delete button. */
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  /** Bumped on double-click so the name field gets focus. */
+  const [focusName, setFocusName] = useState(0);
   const [flow, setFlow] = useState<ReactFlowInstance<Node<EdNodeData>, Edge> | null>(null);
   const loop = root ? loopAt(root, path) : {};
   const nodesDoc = asMap(loop.nodes);
@@ -95,13 +99,16 @@ export function LoopEditor({ files, setFiles }: TabProps) {
   const rfEdges: Edge[] = edges.map(([a, bb]) => {
     // edges going back (right to left) run underneath the graph
     const back = xOf(bb!) <= xOf(a!);
+    const id = `${a}->${bb}`;
     return {
-      id: `${a}->${bb}`, source: a!, target: bb!,
+      id, source: a!, target: bb!, selected: id === selectedEdge,
+      // a wide invisible band around the line so it is easy to click
+      interactionWidth: 24,
       sourceHandle: back ? 'back-out' : 'out', targetHandle: back ? 'back-in' : 'in',
       type: back ? 'smoothstep' : 'default',
       pathOptions: back ? { offset: 28, borderRadius: 12 } : undefined,
       markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-      className: back ? 'loop-edge is-back' : 'loop-edge',
+      className: `${back ? 'loop-edge is-back' : 'loop-edge'}${id === selectedEdge ? ' is-selected' : ''}`,
     };
   });
 
@@ -160,6 +167,7 @@ export function LoopEditor({ files, setFiles }: TabProps) {
     let extra: Record<string, string> = {};
     for (const s of sources) extra = { ...extra, ...withBranch(s, next) };
     commit({ ...loop, edges: next }, extra);
+    setSelectedEdge(null);
   };
 
   const removeNode = (id: string) => {
@@ -215,8 +223,17 @@ export function LoopEditor({ files, setFiles }: TabProps) {
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onNodeDragStop={(_, n) => commit({ ...loop, nodes: { ...nodesDoc, [n.id]: { ...asMap(nodesDoc[n.id]), pos: [Math.round(n.position.x), Math.round(n.position.y)] } } })}
-            onNodeClick={(_, n) => setSelected(n.id)}
-            onPaneClick={() => setSelected(null)}
+            onNodeClick={(_, n) => { setSelected(n.id); setSelectedEdge(null); }}
+            onNodeDoubleClick={(_, n) => {
+              // double-click: go into a sub-loop, or edit the node's name
+              setSelectedEdge(null);
+              if (asMap(nodesDoc[n.id]).type === 'loop') { setPath([...path, n.id]); setSelected(null); return; }
+              setSelected(n.id);
+              setFocusName((v) => v + 1);
+            }}
+            onEdgeClick={(_, e) => { setSelectedEdge(e.id); setSelected(null); }}
+            onPaneClick={() => { setSelected(null); setSelectedEdge(null); }}
+            zoomOnDoubleClick={false}
             onConnect={onConnect}
             onEdgesDelete={(es) => removeEdges(es.map((e) => e.id))}
             deleteKeyCode={['Delete', 'Backspace']}
@@ -231,9 +248,23 @@ export function LoopEditor({ files, setFiles }: TabProps) {
         </div>
       </div>
       <aside className="loop-editor-side card">
-        {sel ? (
+        {selectedEdge && edges.some(([a, t]) => `${a}->${t}` === selectedEdge) ? (
+          <div className="node-panel">
+            <strong>연결</strong>
+            <p>
+              {(() => {
+                const [a, t] = selectedEdge.split('->');
+                const name = (n: string) => (asMap(nodesDoc[n]).type === 'start' ? '시작' : asMap(nodesDoc[n]).type === 'end' ? '끝' : String(asMap(nodesDoc[n]).label ?? n));
+                return `${name(a!)} → ${name(t!)}`;
+              })()}
+            </p>
+            <button className="btn" onClick={() => removeEdges([selectedEdge])}>이 연결 지우기</button>
+            <p className="muted">Delete 키로도 지울 수 있어요.</p>
+          </div>
+        ) : sel ? (
           <NodePanel
             key={sel}
+            focusName={focusName}
             id={sel}
             node={asMap(nodesDoc[sel])}
             outs={edges.filter(([a]) => a === sel).map(([, t]) => t!)}
@@ -244,11 +275,13 @@ export function LoopEditor({ files, setFiles }: TabProps) {
             ctx={ctx}
             onNode={(patch, extra) => commit({ ...loop, nodes: { ...nodesDoc, [sel]: { ...asMap(nodesDoc[sel]), ...patch } } }, extra)}
             onEnter={() => { setPath([...path, sel]); setSelected(null); }}
+            onSelectEdge={(id) => { setSelectedEdge(id); setSelected(null); }}
             onDelete={() => removeNode(sel)}
           />
         ) : (
           <div className="muted">
-            <p><strong>노드를 누르면</strong> 여기서 이름과 하는 일을 정할 수 있어요.</p>
+            <p><strong>노드를 누르면</strong> 여기서 이름과 하는 일을 정할 수 있어요. 두 번 누르면 이름을 바로 고치고, 하위 루프는 안으로 들어가요.</p>
+            <p><strong>연결(화살표)을 누르면</strong> 지울 수 있어요.</p>
             <p>페이즈는 자동으로 진행되고, Action은 플레이어가 골라야 들어가요.</p>
           </div>
         )}
@@ -271,9 +304,15 @@ interface PanelProps {
   onNode: (patch: Doc, extra?: Record<string, string | null>) => void;
   onEnter: () => void;
   onDelete: () => void;
+  onSelectEdge: (id: string) => void;
+  focusName: number;
 }
 
-function NodePanel({ id, node, outs, nodesDoc, allNodeIds, files, game, ctx, onNode, onEnter, onDelete }: PanelProps) {
+function NodePanel({ id, node, outs, nodesDoc, allNodeIds, files, game, ctx, onNode, onEnter, onDelete, onSelectEdge, focusName }: PanelProps) {
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusName) nameInput.current?.select();
+  }, [focusName]);
   const type = String(node.type ?? 'phase');
   const script = node.script ? String(node.script) : null;
   const config = script ? readRecipe(files[script], ctx) : null;
@@ -291,11 +330,23 @@ function NodePanel({ id, node, outs, nodesDoc, allNodeIds, files, game, ctx, onN
       {type !== 'start' && type !== 'end' && (
         <label className="field">
           <span>이름</span>
-          <input value={String(node.label ?? '')} onChange={(e) => onNode({ label: e.target.value })} />
+          <input ref={nameInput} value={String(node.label ?? '')} onChange={(e) => onNode({ label: e.target.value })} />
         </label>
       )}
 
       {type === 'loop' && <button className="btn" onClick={onEnter}>하위 루프 안으로 들어가서 편집</button>}
+
+      {outs.length > 0 && (
+        <div className="outs">
+          <span className="muted">나가는 연결</span>
+          {outs.map((o) => (
+            <div key={o} className="row">
+              <span>→ {asMap(nodesDoc[o]).type === 'end' ? '끝' : String(asMap(nodesDoc[o]).label ?? o)}</span>
+              <button className="btn btn-small" onClick={() => onSelectEdge(`${id}->${o}`)}>선택</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {type === 'action' && (
         <>

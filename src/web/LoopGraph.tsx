@@ -158,6 +158,9 @@ export function LoopGraph({ loop: root, current, waiting, finished, errorAt, tra
           onNodeClick={(_, n) => {
             if (loop.nodes[n.id]?.type === 'loop') setPinned([...shownPrefix, n.id]);
           }}
+          onNodeDoubleClick={(_, n) => {
+            if (loop.nodes[n.id]?.type === 'loop') setPinned([...shownPrefix, n.id]);
+          }}
           zoomOnDoubleClick={false}
           panOnScroll
           zoomOnScroll={false}
