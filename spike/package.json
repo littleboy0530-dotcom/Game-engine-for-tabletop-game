@@ -1,0 +1,12 @@
+{
+  "name": "spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spike1": "node spike1.mjs",
+    "spike2": "node spike2.mjs"
+  },
+  "dependencies": {
+    "wasmoon": "1.16.0"
+  }
+}
