@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Engine } from '../src/engine';
 import { replay } from '../src/engine';
-import { gameDir, pick, play, readGameFolder, startGame } from './helpers';
+import { gameDir, play, readGameFolder, startGame } from './helpers';
 
 const files = readGameFolder(gameDir('castletown'));
 

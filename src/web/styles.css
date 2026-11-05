@@ -1013,3 +1013,108 @@ select {
 .loop-node.is-unavailable {
   opacity: 0.45;
 }
+
+/* tiles */
+.tile-board-wrap {
+  overflow: auto;
+  max-height: 70vh;
+  border-radius: 12px;
+  background: var(--mat);
+  padding: 8px;
+}
+
+.tile-board {
+  display: block;
+  margin: 0 auto;
+  width: 100%;
+  height: auto;
+}
+
+.tile-field {
+  fill: #9cc47a;
+}
+
+.tile-border {
+  fill: none;
+  stroke: rgba(40, 30, 20, 0.45);
+  stroke-width: 1.5;
+}
+
+.tile-city polygon,
+.tile-city rect {
+  fill: #c9a06a;
+  stroke: #8a6a3e;
+  stroke-width: 1;
+}
+
+.tile-road line {
+  stroke: #f4efe3;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.tile-crossing {
+  fill: #f4efe3;
+}
+
+.tile-spot {
+  fill: none;
+  stroke: var(--line);
+  stroke-dasharray: 4 4;
+  stroke-width: 1.5;
+}
+
+.tile-spot.is-target {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+  stroke: var(--target);
+  stroke-dasharray: none;
+  stroke-width: 3;
+  cursor: pointer;
+}
+
+.part-target {
+  fill: color-mix(in srgb, var(--accent) 45%, transparent);
+  stroke: var(--target);
+  stroke-width: 3;
+  cursor: pointer;
+}
+
+.worker {
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 1.5;
+}
+
+.tile-view {
+  display: block;
+  border-radius: 4px;
+}
+
+.tile-view.is-selectable {
+  outline: 3px solid var(--target);
+}
+
+.tile-back {
+  fill: var(--card-back);
+}
+
+/* style: cards (pyramid and other card layouts) */
+.card-layout-wrap {
+  overflow-x: auto;
+  background: var(--mat);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.card-layout {
+  position: relative;
+  margin: 0 auto;
+}
+
+.card-slot {
+  position: absolute;
+}
+
+.card-slot.card-empty {
+  width: 72px;
+  min-height: 100px;
+}

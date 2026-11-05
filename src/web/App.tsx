@@ -7,6 +7,8 @@ import { GAMES } from './games';
 import { LoopGraph } from './LoopGraph';
 import { Mat } from './Mat';
 import { RingBoard } from './RingBoard';
+import { TileBoard } from './TileBoard';
+import { CardLayout } from './CardLayout';
 
 interface Menu {
   choices: Choice[];
@@ -116,8 +118,10 @@ export function App() {
   const current = players.find((p) => p.id === (pending?.player ?? view?.current));
   const winner = view?.result ? players.find((p) => p.id === view.result!.winner) : undefined;
   const board = def?.boards[0];
-  const gridBoard = board && board.coords === 'square' ? board : null;
+  const gridBoard = board && board.coords === 'square' && board.style !== 'cards' ? board : null;
+  const cardBoard = board && board.style === 'cards' ? board : null;
   const ringBoard = board && board.coords === 'track' ? board : null;
+  const tileBoard = board && board.coords === 'open' ? board : null;
 
   return (
     <div className="app" onClick={() => setMenu(null)}>
@@ -166,6 +170,8 @@ export function App() {
                   </div>
                 )}
                 {ringBoard && <RingBoard engine={engine} board={ringBoard} viewer={viewer} targets={targets} onPick={pick} />}
+                {tileBoard && <TileBoard engine={engine} board={tileBoard} targets={targets} onPick={pick} />}
+                {cardBoard && <CardLayout engine={engine} board={cardBoard} viewer={viewer} targets={targets} onPick={pick} />}
                 <Mat engine={engine} viewer={viewer} targets={targets} onPick={pick} />
                 {covered && current && (
                   <div className="cover">

@@ -1,0 +1,10 @@
+id,label,text,tags,cost,coins,points,symbol,color,count,zone
+chest,금화 상자,코인 +3,보물,0,3,,,#b8901f,3,deck
+market,시장,코인 +2 / 1점,보물,1,2,1,,#b8901f,3,deck
+wall,성벽,3점,건물,2,,3,,#8a5a2b,3,deck
+tower,탑,5점,건물,4,,5,,#8a5a2b,2,deck
+star,별의 문장,"문장: 별 (다른 문장 4개를 모으면 승리)",문장,2,,1,별,#2f6fb5,2,deck
+moon,달의 문장,문장: 달,문장,2,,1,달,#2f6fb5,2,deck
+sun,해의 문장,문장: 해,문장,2,,1,해,#2f6fb5,2,deck
+wind,바람의 문장,문장: 바람,문장,2,,1,바람,#2f6fb5,2,deck
+wave,물결의 문장,문장: 물결,문장,2,,1,물결,#2f6fb5,2,deck

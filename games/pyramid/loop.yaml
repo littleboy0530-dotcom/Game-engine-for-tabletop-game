@@ -1,0 +1,18 @@
+# 층층 시장: 피라미드를 깔고, 번갈아 드러난 카드를 가져가거나 판다
+nodes:
+  start: { type: start, pos: [0, 100] }
+  deal:  { type: phase, label: 피라미드 깔기, script: loop/deal.lua, pos: [130, 100] }
+  turn:  { type: phase, label: 차례, pos: [300, 100] }
+  take:  { type: action, label: 가져가기, script: loop/take.lua, pos: [460, 30] }
+  sell:  { type: action, label: 팔기, script: loop/sell.lua, pos: [460, 170] }
+  after: { type: phase, label: 정리, script: loop/after.lua, pos: [620, 100] }
+  end:   { type: end, pos: [780, 100] }
+edges:
+  - [start, deal]
+  - [deal, turn]
+  - [turn, take]
+  - [turn, sell]
+  - [take, after]
+  - [sell, after]
+  - [after, turn]
+  - [after, end]

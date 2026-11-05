@@ -81,7 +81,7 @@ export interface BoardDef {
   width: number;
   height: number;
   /** How the grid is drawn: as cells (chess) or as line intersections (janggi). */
-  style: 'cells' | 'points' | 'ring' | 'tiles';
+  style: 'cells' | 'points' | 'ring' | 'tiles' | 'cards';
   zones: string[];
   /** Zones in grid order, index = y * width + x. */
   grid: (string | null)[];

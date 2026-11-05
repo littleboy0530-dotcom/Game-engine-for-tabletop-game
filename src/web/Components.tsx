@@ -1,6 +1,7 @@
 // Small views for components outside the grid: cards, dice, pieces.
 import type { Engine } from '../engine';
 import { inkOn } from './Board';
+import { TileArt } from './TileBoard';
 
 interface Props {
   engine: Engine;
@@ -32,6 +33,15 @@ export function ComponentView({ engine, id, visible, selectable, onClick, small 
         <span className="card-label" style={color ? { color } : undefined}>{engine.pieceLabel(id)}</span>
         {t.text && !small && <span className="card-text">{t.text}</span>}
       </div>
+    );
+  }
+
+  if (t.kind === 'tile') {
+    const size = small ? 56 : 72;
+    return (
+      <svg className={`tile-view${cls}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} onClick={onClick}>
+        {visible ? <TileArt engine={engine} id={id} size={size} /> : <rect width={size} height={size} className="tile-back" />}
+      </svg>
     );
   }
 

@@ -1,4 +1,4 @@
-# 게임 만들기 가이드 (3단계 기준)
+# 게임 만들기 가이드 (4단계 기준)
 
 게임 하나는 `games/` 아래의 폴더 하나예요. 폴더를 추가하면 화면의 게임 목록에 자동으로 나타나요.
 
@@ -13,6 +13,8 @@
 | [`games/mahjong`](../games/mahjong) | 반응 창구 `game:respond`: 론 > 퐁 > 치 |
 | [`games/starmarket`](../games/starmarket) | 규칙 리스너: 중앙 줄에서 카드가 빠지면 자동으로 채움 |
 | [`games/lanes`](../games/lanes) | 뒷면으로 몰래 내기, 솔로 모드의 스크립트 플레이어 |
+| [`games/castletown`](../games/castletown) | 타일 놓기: 열린 보드, 변 맞추기, 회전, 일꾼 놓기, 영역 점수 |
+| [`games/pyramid`](../games/pyramid) | 카드 피라미드: 덮인 카드, 드러나면 뒤집기 |
 
 ```
 games/my-game/
@@ -105,6 +107,36 @@ zones:                # 격자 밖의 존. 화면에서 보드 아래 "매트"�
   - { id: deck, name: 덱, perPlayer: true, layout: pile, visibility: hidden }
   - { id: hand, name: 손패, perPlayer: true, layout: row, visibility: owner }
   - { id: supply_copper, name: 동전, layout: pile, visibility: topOnly, group: 공급처 }
+```
+
+### 열린 보드와 타일 (카르카손형)
+```yaml
+id: land
+coords: open          # 크기가 정해지지 않은 격자. 처음에는 start의 칸만 있어요
+start: [[0, 0]]
+```
+```yaml
+# game.yaml
+tileTypes:
+  cityRoad:
+    label: 성문 길
+    edges: { N: 도시, E: 길, S: 들, W: 길 }          # 변의 종류
+    segments:                                        # 일꾼을 놓을 수 있는 부분
+      - { kind: 도시, sides: [N] }
+      - { kind: 길, sides: [E, W] }
+```
+- 게임 중에 `board:addZone(x, y)`로 칸을 더해요. 화면에는 빈 칸이 점선으로 보여요.
+- 타일을 보드 칸에 놓으면 **부분마다 작은 존이 자동으로 생겨요**: `zone:children()`, `zone:child(부분id)`. 여기에 일꾼을 놓아요.
+- `game:fits(tile, zone, 회전)`: 그 회전으로 놓으면 이웃 타일들과 변이 맞는지. `game:setRotation(tile, 0~3)`으로 돌려요.
+- `game:region(zone, 부분id)`: 변으로 이어진 같은 종류 부분 전체. `tiles`(타일 수), `complete`(닫혔는지), `meeples`(그 위의 일꾼들)를 알려줘요.
+
+### 카드 배치 보드 (피라미드 등)
+```yaml
+coords: square
+size: [9, 5]
+style: cards          # 칸을 카드 자리로 그려요. x 한 칸 = 카드 반 장이라 줄끼리 겹쳐요
+tags:
+  칸: [[0,0],[2,0],[1,1]]   # 태그가 있거나 카드가 있는 칸만 보여요
 ```
 
 ### 트랙 보드
@@ -339,6 +371,8 @@ return {
 | `game:roll(6)` / `game:roll(die)` | 1~6 숫자 / 주사위를 굴리고 나온 면의 값 (`rolled` 트리거가 바꿀 수 있음) |
 | `game:emit` / `game:before` / `game:chain` | 이벤트와 트리거 (5장) |
 | `game:respond(players, fn, prompt, opts)` | 여러 사람에게 묻기 (6장) |
+| `game:rotate(c, n)` / `game:setRotation(c, r)` | 타일 돌리기 (시계 방향 90도 단위) |
+| `game:fits(tile, zone, r)` / `game:region(zone, part)` / `game:tileIn(zone)` | 타일 놓기 도우미 |
 | `game:script(c)` | 컴포넌트 종류 스크립트의 테이블 (예: `game:script(card).onPlay(...)`) |
 | `game:choose(player, list, prompt)` | 플레이어에게 고르게 함 (실행 스크립트에서만) |
 | `game:moveCandidates(piece)` | 말 스크립트 후보 ∩ 존이 받아주는 곳 |
@@ -353,14 +387,14 @@ return {
 `id`, `name`, `index`, `color`, `vars`, `player:zone(name)`, `player:pieces(type?)`, `player:cards(type?)`
 
 ### 컴포넌트 (말, 카드, 주사위)
-`id`, `type`, `kind`(`piece`/`card`/`die`), `owner`, `zone`, `label`, `text`, `tags`, `props`, `face`(`up`/`down`), `value`(주사위 면의 값), `c:hasTag(tag)`
+`id`, `type`, `kind`(`piece`/`card`/`die`/`tile`), `owner`, `zone`, `label`, `text`, `tags`, `props`, `face`(`up`/`down`), `value`(주사위 면의 값), `rotation`(타일), `c:hasTag(tag)`, `c:edge("N")`, `c:segments()`(타일, 회전 적용)
 
 ### zone
 `id`, `name`, `x`, `y` (격자 밖이면 nil), `tags`, `props`, `owner`, `layout`, `visibility`, `board`,
-`zone:hasTag(tag)`, `zone:top()`, `zone:bottom()`, `zone:cards()` / `zone:components()`, `zone:isEmpty()`, `zone:count()`
+`zone:hasTag(tag)`, `zone:top()`, `zone:bottom()`, `zone:cards()` / `zone:components()`, `zone:isEmpty()`, `zone:count()`, `zone:children()`, `zone:child(part)`, `parent`, `segment`
 
 ### board
-`id`, `width`, `height`, `board:zoneAt(x, y)`, `board:neighbors(zone)`, `board:connected(a, b)`, `board:zones()`, `board:zonesWithTag(tag)`
+`id`, `width`, `height`, `board:zoneAt(x, y)`, `board:neighbors(zone)`, `board:connected(a, b)`, `board:zones()`, `board:zonesWithTag(tag)`, `board:addZone(x, y)`(열린 보드)
 
 ---
 
