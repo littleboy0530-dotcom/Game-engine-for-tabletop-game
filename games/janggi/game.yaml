@@ -1,0 +1,43 @@
+name: 장기
+players:
+  - { id: cho, name: 초, color: "#1f6f5c" }
+  - { id: han, name: 한, color: "#b8322a" }
+
+pieceTypes:
+  general:  { label: { cho: "楚", han: "漢" }, tags: [궁] }
+  guard:    { label: "士" }
+  chariot:  { label: "車" }
+  cannon:   { label: "包" }
+  horse:    { label: "馬" }
+  elephant: { label: "象" }
+  soldier:  { label: { cho: "卒", han: "兵" } }
+
+scripts:
+  pieces: components/pieces.lua
+
+# 마와 상은 게임 시작 때 각자 상차림을 골라서 놓는다 (loop/setup.lua)
+setup:
+  - { type: general, owner: cho, at: [4, 1] }
+  - { type: guard,   owner: cho, at: [3, 0] }
+  - { type: guard,   owner: cho, at: [5, 0] }
+  - { type: chariot, owner: cho, at: [0, 0] }
+  - { type: chariot, owner: cho, at: [8, 0] }
+  - { type: cannon,  owner: cho, at: [1, 2] }
+  - { type: cannon,  owner: cho, at: [7, 2] }
+  - { type: soldier, owner: cho, at: [0, 3] }
+  - { type: soldier, owner: cho, at: [2, 3] }
+  - { type: soldier, owner: cho, at: [4, 3] }
+  - { type: soldier, owner: cho, at: [6, 3] }
+  - { type: soldier, owner: cho, at: [8, 3] }
+  - { type: general, owner: han, at: [4, 8] }
+  - { type: guard,   owner: han, at: [3, 9] }
+  - { type: guard,   owner: han, at: [5, 9] }
+  - { type: chariot, owner: han, at: [0, 9] }
+  - { type: chariot, owner: han, at: [8, 9] }
+  - { type: cannon,  owner: han, at: [1, 7] }
+  - { type: cannon,  owner: han, at: [7, 7] }
+  - { type: soldier, owner: han, at: [0, 6] }
+  - { type: soldier, owner: han, at: [2, 6] }
+  - { type: soldier, owner: han, at: [4, 6] }
+  - { type: soldier, owner: han, at: [6, 6] }
+  - { type: soldier, owner: han, at: [8, 6] }

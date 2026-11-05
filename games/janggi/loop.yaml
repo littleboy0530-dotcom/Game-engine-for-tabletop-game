@@ -1,0 +1,18 @@
+# 장기의 진행: 상차림 → 턴 시작 → (말 이동 | 기권) → 승패 판정 → 다음 턴
+nodes:
+  start:  { type: start, pos: [0, 120] }
+  setup:  { type: phase, label: 상차림, script: loop/setup.lua, pos: [140, 120] }
+  turn:   { type: phase, label: 턴 시작, pos: [300, 120] }
+  move:   { type: action, label: 말 이동, script: loop/move.lua, pos: [480, 40] }
+  resign: { type: action, label: 기권, script: loop/resign.lua, pos: [480, 200] }
+  judge:  { type: phase, label: 승패 판정, script: loop/judge.lua, pos: [660, 120] }
+  end:    { type: end, pos: [840, 120] }
+edges:
+  - [start, setup]
+  - [setup, turn]
+  - [turn, move]
+  - [turn, resign]
+  - [move, judge]
+  - [resign, judge]
+  - [judge, turn]
+  - [judge, end]

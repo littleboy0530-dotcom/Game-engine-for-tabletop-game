@@ -1,0 +1,13 @@
+id: board
+coords: square
+size: [8, 8]
+style: cells
+adjacency: all
+names:
+  columns: abcdefgh
+  rows: ["1", "2", "3", "4", "5", "6", "7", "8"]
+zoneDefaults:
+  accepts: [piece]
+zones:
+  - { id: captured_white, name: 백이 잡은 말, layout: row }
+  - { id: captured_black, name: 흑이 잡은 말, layout: row }

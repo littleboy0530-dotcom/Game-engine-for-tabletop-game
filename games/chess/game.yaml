@@ -1,0 +1,49 @@
+name: 체스
+players:
+  - { id: white, name: 백, color: "#f4efe3" }
+  - { id: black, name: 흑, color: "#2d2a26" }
+
+pieceTypes:
+  king:   { label: { white: "♔", black: "♚" } }
+  queen:  { label: { white: "♕", black: "♛" } }
+  rook:   { label: { white: "♖", black: "♜" } }
+  bishop: { label: { white: "♗", black: "♝" } }
+  knight: { label: { white: "♘", black: "♞" } }
+  pawn:   { label: { white: "♙", black: "♟" } }
+
+scripts:
+  pieces: components/pieces.lua
+
+setup:
+  - { type: rook, owner: white, at: [0, 0] }
+  - { type: knight, owner: white, at: [1, 0] }
+  - { type: bishop, owner: white, at: [2, 0] }
+  - { type: queen, owner: white, at: [3, 0] }
+  - { type: king, owner: white, at: [4, 0] }
+  - { type: bishop, owner: white, at: [5, 0] }
+  - { type: knight, owner: white, at: [6, 0] }
+  - { type: rook, owner: white, at: [7, 0] }
+  - { type: pawn, owner: white, at: [0, 1] }
+  - { type: pawn, owner: white, at: [1, 1] }
+  - { type: pawn, owner: white, at: [2, 1] }
+  - { type: pawn, owner: white, at: [3, 1] }
+  - { type: pawn, owner: white, at: [4, 1] }
+  - { type: pawn, owner: white, at: [5, 1] }
+  - { type: pawn, owner: white, at: [6, 1] }
+  - { type: pawn, owner: white, at: [7, 1] }
+  - { type: rook, owner: black, at: [0, 7] }
+  - { type: knight, owner: black, at: [1, 7] }
+  - { type: bishop, owner: black, at: [2, 7] }
+  - { type: queen, owner: black, at: [3, 7] }
+  - { type: king, owner: black, at: [4, 7] }
+  - { type: bishop, owner: black, at: [5, 7] }
+  - { type: knight, owner: black, at: [6, 7] }
+  - { type: rook, owner: black, at: [7, 7] }
+  - { type: pawn, owner: black, at: [0, 6] }
+  - { type: pawn, owner: black, at: [1, 6] }
+  - { type: pawn, owner: black, at: [2, 6] }
+  - { type: pawn, owner: black, at: [3, 6] }
+  - { type: pawn, owner: black, at: [4, 6] }
+  - { type: pawn, owner: black, at: [5, 6] }
+  - { type: pawn, owner: black, at: [6, 6] }
+  - { type: pawn, owner: black, at: [7, 6] }
