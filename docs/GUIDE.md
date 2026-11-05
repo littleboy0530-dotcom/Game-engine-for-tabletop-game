@@ -1,4 +1,4 @@
-# 게임 만들기 가이드 (2단계 기준)
+# 게임 만들기 가이드 (3단계 기준)
 
 게임 하나는 `games/` 아래의 폴더 하나예요. 폴더를 추가하면 화면의 게임 목록에 자동으로 나타나요.
 
@@ -9,6 +9,10 @@
 | [`games/poker`](../games/poker) | 카드 CSV, 손패 숨기기, 하위 루프 안의 하위 루프 |
 | [`games/domain`](../games/domain) | 덱빌딩: 공급처 더미, 덱/손패/버림, 다른 플레이어에게 choose |
 | [`games/estate`](../games/estate) | 트랙 보드, 주사위 컴포넌트, 공통 Action |
+| [`games/racers`](../games/racers) | 능력 = 트리거: 레이서마다 `on = { rolled, passed, stopped }` |
+| [`games/mahjong`](../games/mahjong) | 반응 창구 `game:respond`: 론 > 퐁 > 치 |
+| [`games/starmarket`](../games/starmarket) | 규칙 리스너: 중앙 줄에서 카드가 빠지면 자동으로 채움 |
+| [`games/lanes`](../games/lanes) | 뒷면으로 몰래 내기, 솔로 모드의 스크립트 플레이어 |
 
 ```
 games/my-game/
@@ -29,7 +33,7 @@ games/my-game/
 name: 작은 영지
 players:
   - { id: a, name: 가온, color: "#2f6fb5" }
-  - { id: b, name: 나린, color: "#b5562b" }
+  - { id: b, name: 나린, color: "#b5562b", script: ai/bot.lua }   # script가 있으면 자동으로 고름
 
 pieceTypes:                                       # 말
   king: { label: { white: "♔", black: "♚" } }     # 플레이어별 표시
@@ -45,8 +49,9 @@ diceTypes:                                        # 주사위
 cards: cards.csv                                  # 카드 목록 파일
 
 scripts:
-  pieces: components/pieces.lua    # 말 종류별 이동 판정
-  zones: components/zones.lua      # (선택) 존 태그별 진입 판정
+  components: components/pieces.lua   # 컴포넌트 종류별 스크립트 (이동 판정, 트리거, 카드 효과)
+  listeners: rules/refill.lua         # (선택) 규칙 리스너: 컴포넌트와 상관없는 트리거
+  zones: components/zones.lua         # (선택) 존 태그별 진입 판정
 
 setup:                             # 처음 배치
   - { type: king, owner: white, at: [4, 0] }          # 격자 좌표
@@ -241,10 +246,82 @@ return {
 3. `game:choose`를 부르면, 플레이어가 답할 때 **그 스크립트가 처음부터 다시 실행**돼요. 위 두 규칙을 지키면 신경 쓰지 않아도 결과가 정확해요. 기다리는 동안 화면에는 그때까지 바뀐 모습이 보여요.
 4. 무작위는 `math.random` 대신 `game:roll()`, `game:shuffle()`을 쓰세요. 같은 시드면 같은 결과가 나와요.
 5. `vars`에 넣은 테이블은 **복사본**이에요. `game.vars.list[1] = x`는 저장되지 않으니 테이블을 고친 뒤 `game.vars.list = list`로 다시 넣으세요.
+6. `pairs`로 테이블을 돌면 **순서가 매번 달라질 수 있어요.** 순서가 결과에 영향을 주면 `ipairs`를 쓰거나 키를 정렬하세요. 그래야 같은 시드로 같은 게임이 다시 나와요.
+
+## 5. 이벤트와 트리거
+
+"무슨 일이 일어나면 ~한다"는 능력은 **트리거**로 만들어요.
+
+```lua
+-- components/racers.lua: 컴포넌트 종류별 트리거. self는 그 컴포넌트
+return {
+  hedgehog = { on = {
+    passed = function(self, game, e)               -- 누가 지나갈 때
+      if e.passed == self then race.move(game, e.mover, -1) end
+    end,
+  } },
+}
+```
+
+```lua
+-- rules/refill.lua: 규칙 리스너 (game.yaml의 scripts.listeners)
+return { on = {
+  moved = function(game, e)
+    if e.from and e.from.id == "center" then refill(game) end
+  end,
+} }
+```
+
+| 함수 | 뜻 |
+|---|---|
+| `game:emit(이름, 정보)` | 일어난 일을 알려요. 듣고 있는 트리거가 **먼저 일어난 순서대로** 실행돼요 |
+| `game:before(이름, 정보)` | 일어나기 **전에** 물어요. 트리거가 바로 실행되고, 정보의 값을 바꾸거나 `e.cancel = true`로 막을 수 있어요. 바뀐 정보를 돌려줘요 |
+| `game:chain(function() ... end)` | 안에서 일어난 트리거를 모았다가 **나중 것부터** 처리해요 (TCG의 체인) |
+
+엔진이 직접 내는 이벤트
+| 이벤트 | 정보 |
+|---|---|
+| `moved` | `component`, `from`(옮기기 전 존, 없으면 nil), `to` |
+| `rolled` | `die`, `value`, `player`. 트리거가 `e.value`를 바꾸면 그 값이 `game:roll`의 결과가 돼요 |
+
+규칙
+- 트리거 순서: 규칙 리스너 → 현재 플레이어의 컴포넌트 → 턴 순서대로 다른 플레이어 → 주인 없는 컴포넌트.
+- 트리거가 또 트리거를 일으키며 **32번을 넘으면** 멈추고, 마지막 트리거 이름들을 보여줘요.
+- 트리거 안에서도 `game:choose`를 쓸 수 있어요.
+
+## 6. 여러 사람에게 묻기
+
+```lua
+-- 마작: 버린 패를 가져갈지 다른 세 사람에게 묻는다
+local picks = game:respond(others, function(p)
+  return { { kind = "론", label = "론" }, { kind = "퐁", label = "퐁 5만" } }
+end, "가져갈까요?", { priority = { "론", "퐁", "치" }, accept = 1 })
+local pick = picks[1]   -- { player = ..., choice = ... } 또는 nil
+```
+- 선택지가 있는 사람에게만 차례로 물어요. 앞사람의 선택은 다음 사람에게 보이지 않아요.
+- `패스`가 자동으로 붙어요 (`pass = false`로 끌 수 있어요).
+- `priority`는 선택지의 `kind`(없으면 `label`)로 비교해요. 같으면 먼저 물어본 사람이 앞이에요.
+- 서로 모르게 동시에 내는 단계는 각자 `game:choose`로 고르고 카드를 **뒷면(`game:flip(c, "down")`)**으로 놓은 뒤, 공개 단계에서 뒤집으면 돼요 ([`games/lanes`](../games/lanes)).
+
+## 7. 스크립트 플레이어 (솔로 모드)
+
+```lua
+-- ai/shadow.lua
+return {
+  decide = function(game, player, request)
+    -- request.kind: "action" 또는 "choose", request.prompt: 질문
+    -- request.choices: { label, value, action } 목록. 하나를 돌려주면 돼요
+    return request.choices[1]
+  end,
+}
+```
+- `game.yaml`의 플레이어에 `script:`를 적으면 그 플레이어 차례는 자동으로 진행돼요.
+- `decide`는 판정 함수라 상태를 바꿀 수 없어요. 오토마 카드 뒤집기 같은 일은 규칙 스크립트에서 하세요.
+- 되돌리기는 사람의 마지막 선택까지 돌아가요.
 
 ---
 
-## 5. API
+## 8. API
 
 ### game
 | 함수 | 설명 |
@@ -259,7 +336,10 @@ return {
 | `game:move(c, zone, "top" or "bottom")` / `game:remove(c)` | 옮기기(기본은 맨 위) / 없애기 |
 | `game:shuffle(zone)` | 존 안의 순서 섞기 |
 | `game:flip(c, "up" or "down")` | 뒤집기 (생략하면 반대로) |
-| `game:roll(6)` / `game:roll(die)` | 1~6 숫자 / 주사위를 굴리고 나온 면의 값 |
+| `game:roll(6)` / `game:roll(die)` | 1~6 숫자 / 주사위를 굴리고 나온 면의 값 (`rolled` 트리거가 바꿀 수 있음) |
+| `game:emit` / `game:before` / `game:chain` | 이벤트와 트리거 (5장) |
+| `game:respond(players, fn, prompt, opts)` | 여러 사람에게 묻기 (6장) |
+| `game:script(c)` | 컴포넌트 종류 스크립트의 테이블 (예: `game:script(card).onPlay(...)`) |
 | `game:choose(player, list, prompt)` | 플레이어에게 고르게 함 (실행 스크립트에서만) |
 | `game:moveCandidates(piece)` | 말 스크립트 후보 ∩ 존이 받아주는 곳 |
 | `game:canEnter(piece, zone)` | 존이 이 말을 받아주는가 |
@@ -284,7 +364,7 @@ return {
 
 ---
 
-## 6. 확인하는 방법
+## 9. 확인하는 방법
 
 ```bash
 npm install

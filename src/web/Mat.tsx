@@ -84,6 +84,7 @@ export function Mat(props: Props) {
             <div className="mat-title">
               <span className="player-chip" style={{ background: p.color, color: inkOn(p.color) }}>{p.name}</span>
               {p.id === viewer && <span className="muted">내 자리</span>}
+              {engine.isScripted(p.id) && <span className="muted">자동 (스크립트)</span>}
             </div>
             <div className="mat-zones">
               {own.map((z) => <ZoneView key={z.id} {...props} zone={z} />)}

@@ -268,6 +268,7 @@ export function App() {
                               <td>
                                 <span className="dot" style={{ background: p.color }} />
                                 {p.name}
+                                {engine.isScripted(p.id) && <span className="muted"> (자동)</span>}
                               </td>
                               {def.display.player.map((d) => <td key={d.key}>{fmt(view.playerVars[p.id]?.[d.key])}</td>)}
                             </tr>
