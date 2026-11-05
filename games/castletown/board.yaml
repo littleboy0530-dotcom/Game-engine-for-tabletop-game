@@ -1,0 +1,9 @@
+# 열린 보드: 처음에는 (0,0) 한 칸뿐이고, 타일을 놓을 때마다 주변 칸이 생긴다
+id: land
+coords: open
+start: [[0, 0]]
+zones:
+  - { id: bag, name: 타일 주머니, layout: pile, visibility: hidden }
+  - { id: drawn, name: 이번 타일, layout: row }
+  - { id: discarded, name: 놓을 곳이 없는 타일, layout: pile }
+  - { id: supply, name: 일꾼, perPlayer: true, layout: row }

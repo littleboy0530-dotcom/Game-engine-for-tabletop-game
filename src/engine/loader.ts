@@ -2,8 +2,10 @@
 import { parse } from 'yaml';
 import type {
   BoardDef, ComponentKind, DieFace, DisplayVar, GameDef, Json, LoopDef, NodeDef, NodeType, PieceTypeDef, PlayerDef,
-  SetupEntry, Visibility, ZoneDef,
+  SegmentDef, SetupEntry, Side, Visibility, ZoneDef,
 } from './types';
+
+const SIDES: Side[] = ['N', 'E', 'S', 'W'];
 
 export class DefinitionError extends Error {}
 
@@ -92,9 +94,21 @@ function componentType(id: string, kind: ComponentKind, o: Obj, file: string): P
         : { label: String(f), value: f as Json });
     if (!faces.length) fail(file, `주사위 '${id}'에 면이 없어요`);
   }
+  let edges: string[] = [];
+  let segments: SegmentDef[] = [];
+  if (kind === 'tile') {
+    const e = (o.edges ?? {}) as Obj;
+    edges = SIDES.map((sd) => String(e[sd] ?? '-'));
+    segments = asArray(o.segments).map((raw, i) => {
+      const sg = raw as Obj;
+      const sides = asStrings(sg.sides) as Side[];
+      for (const sd of sides) if (!SIDES.includes(sd)) fail(file, `타일 '${id}'의 segments[${i}].sides는 N, E, S, W 중에서 골라요: ${sd}`);
+      return { id: String(sg.id ?? `${sg.kind ?? 'part'}${i + 1}`), kind: String(sg.kind ?? 'part'), sides };
+    });
+  }
   return {
     id, kind, label, back: String(o.back ?? ''), text: String(o.text ?? ''),
-    tags: asStrings(o.tags), props: asProps(o.props), faces,
+    tags: asStrings(o.tags), props: asProps(o.props), faces, edges, segments,
   };
 }
 
@@ -106,7 +120,7 @@ function loadBoard(files: Files, path: string, zones: Record<string, ZoneDef>, p
   const y = readYaml(files, path);
   const id = String(y.id ?? 'board');
   const coords = (y.coords ?? 'square') as BoardDef['coords'];
-  if (!['square', 'track', 'none'].includes(coords)) fail(path, `coords는 square, track, none 중 하나예요`);
+  if (!['square', 'track', 'none', 'open'].includes(coords)) fail(path, `coords는 square, track, open, none 중 하나예요`);
   const defaults = (y.zoneDefaults ?? {}) as Obj;
 
   let width = 0, height = 0;
@@ -118,7 +132,7 @@ function loadBoard(files: Files, path: string, zones: Record<string, ZoneDef>, p
     height = 1;
     if (!width) fail(path, 'track 보드에는 spaces 목록이나 length가 필요해요');
   }
-  const style = (y.style ?? (coords === 'track' ? 'ring' : 'cells')) as BoardDef['style'];
+  const style = (y.style ?? (coords === 'track' ? 'ring' : coords === 'open' ? 'tiles' : 'cells')) as BoardDef['style'];
   const board: BoardDef = { id, coords, width, height, style, zones: [], grid: [], neighbors: {}, edges: [] };
 
   const addZone = (z: ZoneDef) => {
@@ -134,7 +148,7 @@ function loadBoard(files: Files, path: string, zones: Record<string, ZoneDef>, p
   };
   const baseZone = (zid: string, x: number | null, yy: number | null, name: string): ZoneDef => ({
     id: zid, board: id, x, y: yy, name, tags: [], accepts: asStrings(defaults.accepts), layout: 'free',
-    visibility: visibilityOf(defaults.visibility, 'public'), owner: null, props: {}, group: null,
+    visibility: visibilityOf(defaults.visibility, 'public'), owner: null, props: {}, group: null, parent: null, segment: null,
   });
 
   for (let gy = 0; gy < height; gy++) {
@@ -152,7 +166,21 @@ function loadBoard(files: Files, path: string, zones: Record<string, ZoneDef>, p
     }
   }
 
+  // open boards start with a few spots; more are added during play with board:addZone(x, y)
+  if (coords === 'open') {
+    for (const c of asArray(y.start ?? [[0, 0]])) {
+      const [sx, sy] = coordOf(path, c);
+      addZone(baseZone(gridZoneId(id, sx, sy), sx, sy, `${sx},${sy}`));
+    }
+  }
+
   const zoneAtCoord = (c: unknown): string => {
+    if (coords === 'open') {
+      const [cx, cy] = coordOf(path, c);
+      const zid = gridZoneId(id, cx, cy);
+      if (!zones[zid]) fail(path, `열린 보드에 아직 없는 칸이에요: [${cx}, ${cy}] (start에 넣어 주세요)`);
+      return zid;
+    }
     if (coords === 'track' && Number.isInteger(c)) {
       const i = c as number;
       if (i < 0 || i >= width) fail(path, `트랙 밖 칸이에요: ${i}`);
@@ -349,7 +377,7 @@ export function loadGame(files: Files): GameDef {
     if (pieceTypes[t.id]) fail(file, `컴포넌트 종류 id가 중복돼요: ${t.id}`);
     pieceTypes[t.id] = t;
   };
-  for (const [key, kind] of [['pieceTypes', 'piece'], ['cardTypes', 'card'], ['diceTypes', 'die']] as const) {
+  for (const [key, kind] of [['pieceTypes', 'piece'], ['cardTypes', 'card'], ['diceTypes', 'die'], ['tileTypes', 'tile']] as const) {
     for (const [id, v] of Object.entries((g[key] ?? {}) as Obj)) addType(componentType(id, kind, (v ?? {}) as Obj, 'game.yaml'), 'game.yaml');
   }
 

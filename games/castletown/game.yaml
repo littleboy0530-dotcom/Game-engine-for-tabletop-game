@@ -1,0 +1,47 @@
+name: 성곽 마을 (타일 놓기)
+players:
+  - { id: a, name: 솔, color: "#2f6fb5" }
+  - { id: b, name: 별, color: "#b5562b" }
+
+pieceTypes:
+  worker: { label: "♟" }
+
+# 타일: 변(N 위, E 오른쪽, S 아래, W 왼쪽)의 종류와, 일꾼을 놓을 수 있는 부분(segments)
+tileTypes:
+  start:      { label: 출발, edges: { N: 도시, E: 길, S: 들, W: 길 }, segments: [{ kind: 도시, sides: [N] }, { kind: 길, sides: [E, W] }] }
+  cityRoad:   { label: 성문 길, edges: { N: 도시, E: 길, S: 들, W: 길 }, segments: [{ kind: 도시, sides: [N] }, { kind: 길, sides: [E, W] }] }
+  cityCap:    { label: 성벽, edges: { N: 도시, E: 들, S: 들, W: 들 }, segments: [{ kind: 도시, sides: [N] }] }
+  road:       { label: 곧은 길, edges: { N: 들, E: 길, S: 들, W: 길 }, segments: [{ kind: 길, sides: [E, W] }] }
+  curve:      { label: 굽은 길, edges: { N: 들, E: 들, S: 길, W: 길 }, segments: [{ kind: 길, sides: [S, W] }] }
+  cityTube:   { label: 성 통로, edges: { N: 도시, E: 들, S: 도시, W: 들 }, segments: [{ kind: 도시, sides: [N, S] }] }
+  cityCorner: { label: 성 모퉁이, edges: { N: 도시, E: 도시, S: 들, W: 들 }, segments: [{ kind: 도시, sides: [N, E] }] }
+  monastery:  { label: 수도원, edges: { N: 들, E: 들, S: 들, W: 들 }, segments: [{ kind: 수도원, sides: [] }] }
+  monRoad:    { label: 수도원 길, edges: { N: 들, E: 들, S: 길, W: 들 }, segments: [{ kind: 수도원, sides: [] }, { kind: 길, sides: [S] }] }
+  cross:      { label: 네거리, edges: { N: 길, E: 길, S: 길, W: 길 }, segments: [{ kind: 길, sides: [N] }, { kind: 길, sides: [E] }, { kind: 길, sides: [S] }, { kind: 길, sides: [W] }] }
+  tee:        { label: 세거리, edges: { N: 들, E: 길, S: 길, W: 길 }, segments: [{ kind: 길, sides: [E] }, { kind: 길, sides: [S] }, { kind: 길, sides: [W] }] }
+  bigCity:    { label: 큰 성, edges: { N: 도시, E: 도시, S: 들, W: 도시 }, segments: [{ kind: 도시, sides: [N, E, W] }] }
+  fullCity:   { label: 성 한가운데, edges: { N: 도시, E: 도시, S: 도시, W: 도시 }, segments: [{ kind: 도시, sides: [N, E, S, W] }] }
+  capCurve:   { label: 성벽 굽은 길, edges: { N: 도시, E: 들, S: 길, W: 길 }, segments: [{ kind: 도시, sides: [N] }, { kind: 길, sides: [S, W] }] }
+  twoCaps:    { label: 두 성벽, edges: { N: 도시, E: 들, S: 도시, W: 들 }, segments: [{ kind: 도시, sides: [N] }, { kind: 도시, sides: [S] }] }
+
+setup:
+  - { type: start, at: [0, 0] }
+  - { type: worker, zone: supply, perPlayer: true, count: 7 }
+  - { type: cityRoad, zone: bag, count: 3 }
+  - { type: cityCap, zone: bag, count: 5 }
+  - { type: road, zone: bag, count: 8 }
+  - { type: curve, zone: bag, count: 9 }
+  - { type: cityTube, zone: bag, count: 3 }
+  - { type: cityCorner, zone: bag, count: 5 }
+  - { type: monastery, zone: bag, count: 4 }
+  - { type: monRoad, zone: bag, count: 2 }
+  - { type: cross, zone: bag, count: 1 }
+  - { type: tee, zone: bag, count: 4 }
+  - { type: bigCity, zone: bag, count: 3 }
+  - { type: fullCity, zone: bag, count: 1 }
+  - { type: capCurve, zone: bag, count: 3 }
+  - { type: twoCaps, zone: bag, count: 2 }
+
+display:
+  player: { score: 점수, workers: 남은 일꾼 }
+  game: { tilesLeft: 남은 타일 }

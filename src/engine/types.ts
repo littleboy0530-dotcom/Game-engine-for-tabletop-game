@@ -13,7 +13,16 @@ export interface PlayerDef {
   script: string | null;
 }
 
-export type ComponentKind = 'piece' | 'card' | 'die';
+export type ComponentKind = 'piece' | 'card' | 'die' | 'tile';
+
+export type Side = 'N' | 'E' | 'S' | 'W';
+
+/** A part of a tile (a city, a road...) that touches some of its sides. */
+export interface SegmentDef {
+  id: string;
+  kind: string;
+  sides: Side[];
+}
 
 export interface DieFace {
   label: string;
@@ -34,6 +43,10 @@ export interface PieceTypeDef {
   props: Record<string, Json>;
   /** Die faces (dice only). */
   faces: DieFace[];
+  /** Tiles: edge labels for N, E, S, W before rotation. */
+  edges: string[];
+  /** Tiles: parts that meeples can be placed on. */
+  segments: SegmentDef[];
 }
 
 export type Visibility = 'public' | 'owner' | 'hidden' | 'topOnly';
@@ -56,15 +69,19 @@ export interface ZoneDef {
   props: Record<string, Json>;
   /** Display group for off-grid zones. */
   group: string | null;
+  /** Sub-zone of a tile spot (e.g. the city part of a tile), or null. */
+  parent: string | null;
+  /** For sub-zones: the segment id of the tile it belongs to. */
+  segment: string | null;
 }
 
 export interface BoardDef {
   id: string;
-  coords: 'square' | 'track' | 'none';
+  coords: 'square' | 'track' | 'none' | 'open';
   width: number;
   height: number;
   /** How the grid is drawn: as cells (chess) or as line intersections (janggi). */
-  style: 'cells' | 'points' | 'ring';
+  style: 'cells' | 'points' | 'ring' | 'tiles';
   zones: string[];
   /** Zones in grid order, index = y * width + x. */
   grid: (string | null)[];
@@ -145,6 +162,8 @@ export interface PieceState {
   face: 'up' | 'down';
   /** Index of the die face showing (dice only). */
   side: number;
+  /** Quarter turns clockwise (0-3), for tiles. */
+  rot: number;
 }
 
 export type Stage = 'enter' | 'execute' | 'after';
@@ -185,6 +204,8 @@ export interface GameState {
   uses: Record<string, number>;
   /** Where to return after a common action. */
   returnTo: string[] | null;
+  /** Zones added during play (open boards and tile sub-zones). */
+  zones: Record<string, ZoneDef>;
 }
 
 // ---------- requests to the UI ----------

@@ -64,6 +64,8 @@ local function zone(id)
     rawset(z, "props", freeze(info.props or {}, "존의 props"))
     rawset(z, "layout", info.layout)
     rawset(z, "visibility", info.visibility)
+    rawset(z, "segment", info.segment)
+    rawset(z, "_parent", info.parent)
     cache.zone[id] = z
   end
   return z
@@ -126,11 +128,21 @@ PieceMT.__index = function(p, k)
   elseif k == "face" then return js.pieceFace(id)
   elseif k == "value" then return js.pieceValue(id)
   elseif k == "text" then return js.pieceText(id)
+  elseif k == "rotation" then return js.pieceRot(id)
   end
   return nil
 end
 PieceMT.__newindex = readonly("말")
 PieceMT.__tostring = function(p) return "Piece(" .. rawget(p, "id") .. ")" end
+
+-- 타일: 회전을 적용한 변 이름 ("N", "E", "S", "W" → 레이블)
+function Piece:edge(side) return js.tileInfo(rawget(self, "id")).edges[side] end
+-- 타일: 회전을 적용한 부분 목록 { {id, kind, sides}, ... }
+function Piece:segments() return js.tileInfo(rawget(self, "id")).segments end
+function Piece:segment(id)
+  for _, sg in ipairs(self:segments()) do if sg.id == id then return sg end end
+  return nil
+end
 
 function Piece:hasTag(tag)
   for _, t in ipairs(self.tags) do if t == tag then return true end end
@@ -143,6 +155,7 @@ ZoneMT.__index = function(z, k)
   if m then return m end
   if k == "board" then return board(rawget(z, "_board")) end
   if k == "owner" then return player(rawget(z, "_owner")) end
+  if k == "parent" then return zone(rawget(z, "_parent")) end
   return nil
 end
 ZoneMT.__newindex = readonly("존")
@@ -166,6 +179,12 @@ function Zone:bottom()
   return piece(ids[1])
 end
 function Zone:isEmpty() return #js.zoneContents(self.id) == 0 end
+-- 타일이 놓인 칸의 부분 존들 (일꾼을 놓는 곳)
+function Zone:children() return list(js.children(self.id), zone) end
+function Zone:child(segment)
+  for _, c in ipairs(self:children()) do if c.segment == segment then return c end end
+  return nil
+end
 function Zone:count() return #js.zoneContents(self.id) end
 
 -- Board ---------------------------------------------------------------
@@ -173,6 +192,8 @@ BoardMT.__index = Board
 BoardMT.__newindex = readonly("보드")
 
 function Board:zoneAt(x, y) return zone(js.zoneAt(self.id, x, y)) end
+-- coords: open 보드에 칸을 더한다 (이미 있으면 그 칸)
+function Board:addZone(x, y) return zone(js.addZone(self.id, x, y)) end
 function Board:zones() return list(js.boardZones(self.id), zone) end
 function Board:neighbors(z) return list(js.neighbors(z.id), zone) end
 function Board:connected(a, b) return js.connected(a.id, b.id) end
@@ -377,6 +398,89 @@ function game:move(p, z, where)
 end
 function game:remove(p) js.remove(p.id) end
 function game:shuffle(z) js.shuffle(z.id) end
+-- 타일 회전: 시계 방향으로 turns번 90도 / 회전값을 0~3으로 정하기
+function game:rotate(p, turns) js.rotate(p.id, turns or 1) end
+function game:setRotation(p, r) js.setRotation(p.id, r) end
+
+-- 타일 연결 영역: 이 칸의 이 부분과 변으로 이어진 같은 종류의 부분들
+-- 돌려주는 값: { parts = { {zone, segment}, ... }, tiles = 타일 수, open = 열린 변 수,
+--               complete = 닫혔는가, meeples = 영역 위의 컴포넌트들 }
+local STEP = { N = { 0, 1 }, E = { 1, 0 }, S = { 0, -1 }, W = { -1, 0 } }
+local OPPOSITE = { N = "S", E = "W", S = "N", W = "E" }
+
+local function tileIn(z)
+  for _, c in ipairs(z:components()) do if c.kind == "tile" then return c end end
+  return nil
+end
+game.tileIn = function(_, z) return tileIn(z) end
+
+function game:region(z, segmentId)
+  if not z or z.x == nil then error("game:region: 타일이 놓인 보드 칸이 필요해요 (받은 존: " .. tostring(z and z.name) .. ")", 2) end
+  local board = z.board
+  local seen, parts, tiles, meeples = {}, {}, {}, {}
+  local open, tileCount = 0, 0
+  local stack = { { z, segmentId } }
+  while #stack > 0 do
+    local cur = table.remove(stack)
+    local cz, sid = cur[1], cur[2]
+    local key = cz.id .. "/" .. sid
+    if not seen[key] then
+      seen[key] = true
+      local tile = tileIn(cz)
+      local seg = tile and tile:segment(sid)
+      if seg then
+        parts[#parts + 1] = { zone = cz, segment = sid, kind = seg.kind }
+        if not tiles[cz.id] then tiles[cz.id] = true tileCount = tileCount + 1 end
+        local child = cz:child(sid)
+        if child then for _, m in ipairs(child:components()) do meeples[#meeples + 1] = m end end
+        for _, side in ipairs(seg.sides) do
+          local d = STEP[side]
+          local nz = board:zoneAt(cz.x + d[1], cz.y + d[2])
+          local nt = nz and tileIn(nz)
+          if not nt then
+            open = open + 1
+          else
+            for _, other in ipairs(nt:segments()) do
+              if other.kind == seg.kind then
+                for _, s2 in ipairs(other.sides) do
+                  if s2 == OPPOSITE[side] then stack[#stack + 1] = { nz, other.id } end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return { parts = parts, tiles = tileCount, open = open, complete = open == 0, meeples = meeples }
+end
+
+-- 이 타일을 이 칸에 이 회전으로 놓으면 이웃 타일들과 변이 맞는가
+function game:fits(tile, z, rot)
+  if not z or z.x == nil then error("game:fits: 좌표가 있는 보드 칸이 필요해요 (받은 존: " .. tostring(z and z.name) .. ")", 2) end
+  local edges = js.tileInfo(tile.id).edges
+  local base = js.pieceRot(tile.id)
+  local SIDES = { "N", "E", "S", "W" }
+  local function edgeAfter(side)
+    -- side에 오는 원래 변: 회전을 (rot - base)만큼 더 했다고 보고 거꾸로 찾는다
+    local i
+    for k, sd in ipairs(SIDES) do if sd == side then i = k end end
+    local from = SIDES[((i - 1 - (rot - base)) % 4) + 1]
+    return edges[from]
+  end
+  local board = z.board
+  local touching = false
+  for _, side in ipairs(SIDES) do
+    local d = STEP[side]
+    local nz = board:zoneAt(z.x + d[1], z.y + d[2])
+    local nt = nz and tileIn(nz)
+    if nt then
+      touching = true
+      if nt:edge(OPPOSITE[side]) ~= edgeAfter(side) then return false end
+    end
+  end
+  return touching
+end
 function game:flip(p, face) js.flip(p.id, face) end
 -- game:roll(6) → 1~6 숫자, game:roll(주사위) → 주사위를 굴리고 나온 면의 값
 -- 주사위를 굴리면 "rolled" 이벤트가 나고, 리스너가 event.value를 바꿀 수 있다

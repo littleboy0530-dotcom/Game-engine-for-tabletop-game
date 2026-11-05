@@ -1,9 +1,12 @@
 import { LuaFactory, type LuaEngine } from 'wasmoon';
 import prelude from './prelude.lua?raw';
 import type {
-  ActionView, EngineError, GameDef, GameState, Input, Json, LoopDef, NodeDef, OptionView, Pending, Ref,
+  ActionView, BoardDef, EngineError, GameDef, GameState, Input, Json, LoopDef, NodeDef, OptionView, Pending, Ref, Side, ZoneDef,
 } from './types';
-import { playerZoneId } from './loader';
+import { gridZoneId, playerZoneId } from './loader';
+
+const SIDES: Side[] = ['N', 'E', 'S', 'W'];
+const STEP: Record<Side, [number, number]> = { N: [0, 1], E: [1, 0], S: [0, -1], W: [-1, 0] };
 
 /** Node transitions allowed without player input before the engine stops. */
 export const LOOP_LIMIT = 32;
@@ -217,13 +220,35 @@ export class Engine {
     return (pc.owner && t.label[pc.owner]) ?? pc.type;
   }
 
+  /** A zone, including ones added during play (as shown on screen). */
+  zone(id: string): ZoneDef | undefined {
+    return this.def.zones[id] ?? this.view.zones[id];
+  }
+
+  /** Every zone of a board, including ones added during play. */
+  boardZones(boardId: string): ZoneDef[] {
+    const b = this.def.boards.find((x) => x.id === boardId);
+    const fixed = (b?.zones ?? []).map((z) => this.def.zones[z]!);
+    return [...fixed, ...Object.values(this.view.zones).filter((z) => z.board === boardId)];
+  }
+
+  /** Tile edges and parts after rotation. */
+  tileInfo(id: string) {
+    const pc = this.view.pieces[id] ?? this.piece(id);
+    const t = this.def.pieceTypes[pc.type]!;
+    const turn = (sd: Side) => SIDES[(SIDES.indexOf(sd) + pc.rot) % 4]!;
+    const edges: Record<Side, string> = { N: '-', E: '-', S: '-', W: '-' };
+    t.edges.forEach((label, i) => { edges[turn(SIDES[i]!)] = label; });
+    return { edges, segments: t.segments.map((sg) => ({ ...sg, sides: sg.sides.map(turn) })), rot: pc.rot };
+  }
+
   /** Can `viewer` see the front of this component? Scripts always can; this is for the UI. */
   isVisible(id: string, viewer: string | null): boolean {
     const v = this.view;
     const pc = v.pieces[id];
     if (!pc || pc.face === 'down') return false;
     if (!pc.zone) return true;
-    const z = this.def.zones[pc.zone]!;
+    const z = this.zone(pc.zone)!;
     switch (z.visibility) {
       case 'public': return true;
       case 'hidden': return false;
@@ -262,6 +287,7 @@ export class Engine {
       log: [],
       uses: {},
       returnTo: null,
+      zones: {},
     };
     for (const s of def.setup) for (let i = 0; i < s.count; i++) this.createPiece(s.type, s.owner, s.zone);
     try {
@@ -463,11 +489,52 @@ export class Engine {
 
   private createPiece(type: string, owner: string | null, zone: string): string {
     if (!this.def.pieceTypes[type]) throw new Error(`없는 컴포넌트 종류예요: ${type}`);
-    if (!this.def.zones[zone]) throw new Error(`없는 존이에요: ${zone}`);
+    if (!this.zoneDef(zone)) throw new Error(`없는 존이에요: ${zone}`);
     const id = `p${this.state.nextId++}`;
-    this.state.pieces[id] = { id, type, owner, zone, props: {}, face: 'up', side: 0 };
+    this.state.pieces[id] = { id, type, owner, zone, props: {}, face: 'up', side: 0, rot: 0 };
     this.state.contents[zone]!.push(id);
+    this.afterPlace(id, zone);
     return id;
+  }
+
+  private zoneDef(id: string): ZoneDef | undefined {
+    return this.def.zones[id] ?? this.state.zones[id];
+  }
+
+  private boardOf(id: string): BoardDef | undefined {
+    return this.def.boards.find((b) => b.id === id);
+  }
+
+  private neighborsOf(zone: string): string[] {
+    const z = this.zoneDef(zone);
+    if (!z) return [];
+    const b = this.boardOf(z.board)!;
+    if (b.coords === 'open') {
+      if (z.x === null || z.y === null) return [];
+      return SIDES.map((sd) => gridZoneId(b.id, z.x! + STEP[sd][0], z.y! + STEP[sd][1])).filter((id) => this.zoneDef(id));
+    }
+    return [...(b.neighbors[zone] ?? [])];
+  }
+
+  private addZone(z: ZoneDef) {
+    this.state.zones[z.id] = z;
+    this.state.contents[z.id] ??= [];
+  }
+
+  /** A tile put on an open-board spot gets a sub-zone for each of its parts (for meeples). */
+  private afterPlace(id: string, zone: string) {
+    const pc = this.state.pieces[id]!;
+    const t = this.def.pieceTypes[pc.type]!;
+    const z = this.zoneDef(zone)!;
+    if (t.kind !== 'tile' || z.x === null || z.parent) return;
+    for (const sg of t.segments) {
+      const sid = `${zone}/${sg.id}`;
+      if (this.zoneDef(sid)) continue;
+      this.addZone({
+        id: sid, board: z.board, x: null, y: null, name: sg.kind, tags: [sg.kind], accepts: [], layout: 'free',
+        visibility: 'public', owner: null, props: {}, group: null, parent: zone, segment: sg.id,
+      });
+    }
   }
 
   private piece(id: string) {
@@ -545,37 +612,56 @@ export class Engine {
       // boards and zones
       firstBoard: () => def.boards[0]!.id,
       boardInfo: (id: string) => {
-        const b = def.boards.find((x) => x.id === id);
-        return b ? { width: b.width, height: b.height } : undefined;
+        const b = this.boardOf(id);
+        return b ? { width: b.width, height: b.height, coords: b.coords } : undefined;
       },
       zoneInfo: (id: string) => {
-        const z = def.zones[id];
+        const z = this.zoneDef(id);
         if (!z) return undefined;
         return {
           name: z.name, x: lua(z.x), y: lua(z.y), tags: [...z.tags], board: z.board,
           owner: lua(z.owner), props: structuredClone(z.props), layout: z.layout, visibility: z.visibility,
+          parent: lua(z.parent), segment: lua(z.segment),
         };
       },
       zoneAt: (board: string, x: number, y: number) => {
-        const b = def.boards.find((v) => v.id === board);
-        if (!b || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= b.width || y >= b.height) return undefined;
+        const b = this.boardOf(board);
+        if (!b || !Number.isInteger(x) || !Number.isInteger(y)) return undefined;
+        if (b.coords === 'open') {
+          const id = gridZoneId(board, x, y);
+          return this.zoneDef(id) ? id : undefined;
+        }
+        if (x < 0 || y < 0 || x >= b.width || y >= b.height) return undefined;
         return lua(b.grid[y * b.width + x]);
       },
-      boardZones: (board: string) => [...(def.boards.find((b) => b.id === board)?.zones ?? [])],
-      neighbors: (zone: string) => {
-        const z = def.zones[zone];
-        return z ? [...def.boards.find((b) => b.id === z.board)!.neighbors[zone]!] : [];
+      addZone: (board: string, x: number, y: number) => {
+        this.assertMutable('addZone');
+        const b = this.boardOf(board);
+        if (!b || b.coords !== 'open') throw new Error('칸을 더할 수 있는 건 coords: open 보드뿐이에요');
+        if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error(`좌표는 정수여야 해요: ${x}, ${y}`);
+        const id = gridZoneId(board, x, y);
+        if (!this.zoneDef(id)) {
+          this.addZone({
+            id, board, x, y, name: `${x},${y}`, tags: [], accepts: [], layout: 'free', visibility: 'public',
+            owner: null, props: {}, group: null, parent: null, segment: null,
+          });
+        }
+        return id;
       },
-      connected: (a: string, b: string) => {
-        const z = def.zones[a];
-        return !!z && def.boards.find((x) => x.id === z.board)!.neighbors[a]!.includes(b);
-      },
+      boardZones: (board: string) => [
+        ...(this.boardOf(board)?.zones ?? []),
+        ...Object.values(this.state.zones).filter((z) => z.board === board && !z.parent).map((z) => z.id),
+      ],
+      children: (zone: string) => Object.values(this.state.zones).filter((z) => z.parent === zone).map((z) => z.id),
+      neighbors: (zone: string) => this.neighborsOf(zone),
+      connected: (a: string, b: string) => this.neighborsOf(a).includes(b),
       zonesWithTag: (board: string, tag: string) =>
-        (def.boards.find((b) => b.id === board)?.zones ?? []).filter((z) => def.zones[z]!.tags.includes(tag)),
+        [...(this.boardOf(board)?.zones ?? []), ...Object.keys(this.state.zones)]
+          .filter((z) => this.zoneDef(z)!.board === board && this.zoneDef(z)!.tags.includes(tag)),
       zoneContents: (zone: string) => [...(this.state.contents[zone] ?? [])],
       playerZone: (name: string, player: string) => {
         const id = playerZoneId(name, player);
-        return def.zones[id] ? id : undefined;
+        return this.zoneDef(id) ? id : undefined;
       },
       shuffle: (zone: string) => {
         this.assertMutable('shuffle');
@@ -587,7 +673,7 @@ export class Engine {
         }
       },
       zoneAccepts: (zone: string, kind: string) => {
-        const a = def.zones[zone]?.accepts ?? [];
+        const a = this.zoneDef(zone)?.accepts ?? [];
         return a.length === 0 || a.includes(kind);
       },
 
@@ -605,6 +691,20 @@ export class Engine {
         return lua(t.kind === 'die' ? t.faces[pc.side]?.value : undefined);
       },
       pieceText: (id: string) => def.pieceTypes[this.piece(id).type]!.text,
+      pieceRot: (id: string) => this.piece(id).rot,
+      tileInfo: (id: string) => {
+        const info = this.tileInfo(id);
+        return { edges: info.edges, segments: info.segments.map((sg) => ({ id: sg.id, kind: sg.kind, sides: [...sg.sides] })) };
+      },
+      rotate: (id: string, turns: number) => {
+        this.assertMutable('rotate');
+        const pc = this.piece(id);
+        pc.rot = (((pc.rot + Math.round(turns)) % 4) + 4) % 4;
+      },
+      setRotation: (id: string, rot: number) => {
+        this.assertMutable('rotate');
+        this.piece(id).rot = ((Math.round(rot) % 4) + 4) % 4;
+      },
       flip: (id: string, face?: string) => {
         this.assertMutable('flip');
         const pc = this.piece(id);
@@ -639,11 +739,12 @@ export class Engine {
       },
       move: (id: string, zone: string, where?: string) => {
         this.assertMutable('move');
-        if (!def.zones[zone]) throw new Error(`없는 존이에요: ${zone}`);
+        if (!this.zoneDef(zone)) throw new Error(`없는 존이에요: ${zone}`);
         this.detach(id);
         this.piece(id).zone = zone;
         if (where === 'bottom') this.state.contents[zone]!.unshift(id);
         else this.state.contents[zone]!.push(id);
+        this.afterPlace(id, zone);
       },
       remove: (id: string) => {
         this.assertMutable('remove');

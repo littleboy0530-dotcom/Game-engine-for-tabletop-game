@@ -1,0 +1,38 @@
+# 성곽 마을: (타일 뽑기 → 놓기 → 일꾼 → 점수) 턴을 주머니가 빌 때까지 반복
+nodes:
+  start:   { type: start, pos: [0, 120] }
+  prepare: { type: phase, label: 준비, script: loop/prepare.lua, pos: [120, 120] }
+  turn:
+    type: loop
+    label: 턴
+    pos: [280, 120]
+    loop:
+      nodes:
+        start:   { type: start, pos: [0, 100] }
+        draw:    { type: phase, label: 타일 뽑기, script: loop/draw.lua, pos: [110, 100] }
+        ready:   { type: phase, label: 놓을 곳 고르기, pos: [270, 40] }
+        place:   { type: action, label: 타일 놓기, script: loop/place.lua, pos: [430, 40] }
+        workers: { type: phase, label: 일꾼, pos: [590, 40] }
+        put:     { type: action, label: 일꾼 놓기, script: loop/put.lua, pos: [750, 0] }
+        skip:    { type: action, label: 일꾼 안 놓기, script: loop/skip.lua, pos: [750, 90] }
+        score:   { type: phase, label: 점수, script: loop/score.lua, pos: [910, 40] }
+        end:     { type: end, pos: [1060, 100] }
+      edges:
+        - [start, draw]
+        - [draw, ready]
+        - [draw, end]
+        - [ready, place]
+        - [place, workers]
+        - [workers, put]
+        - [workers, skip]
+        - [put, score]
+        - [skip, score]
+        - [score, end]
+  check: { type: phase, label: 끝 확인, script: loop/check.lua, pos: [440, 120] }
+  end:   { type: end, pos: [600, 120] }
+edges:
+  - [start, prepare]
+  - [prepare, turn]
+  - [turn, check]
+  - [check, turn]
+  - [check, end]
