@@ -1,0 +1,28 @@
+# 20칸짜리 순환 트랙. 땅에는 가격(price)과 통행료(rent), 색 묶음(group)이 있다
+id: road
+coords: track
+spaces:
+  - { name: 출발, tags: [출발] }
+  - { name: 골목 시장, tags: [땅], props: { price: 20, rent: 4, group: 갈색 } }
+  - { name: 행운, tags: [행운] }
+  - { name: 작은 공원, tags: [땅], props: { price: 25, rent: 5, group: 갈색 } }
+  - { name: 세금, tags: [세금], props: { tax: 15 } }
+  - { name: 버스 정류장, tags: [땅, 정류장], props: { price: 40, rent: 10, group: 정류장 } }
+  - { name: 꽃집 거리, tags: [땅], props: { price: 35, rent: 7, group: 하늘 } }
+  - { name: 행운, tags: [행운] }
+  - { name: 도서관 거리, tags: [땅], props: { price: 40, rent: 8, group: 하늘 } }
+  - { name: 공사장, tags: [공사장] }
+  - { name: 쉼터, tags: [쉼터] }
+  - { name: 카페 골목, tags: [땅], props: { price: 50, rent: 10, group: 분홍 } }
+  - { name: 행운, tags: [행운] }
+  - { name: 공방 거리, tags: [땅], props: { price: 55, rent: 11, group: 분홍 } }
+  - { name: 기차역, tags: [땅, 정류장], props: { price: 40, rent: 10, group: 정류장 } }
+  - { name: 세금, tags: [세금], props: { tax: 20 } }
+  - { name: 강변, tags: [땅], props: { price: 70, rent: 14, group: 초록 } }
+  - { name: 행운, tags: [행운] }
+  - { name: 언덕 마을, tags: [땅], props: { price: 80, rent: 16, group: 초록 } }
+  - { name: 쉼터, tags: [쉼터] }
+zones:
+  - { id: dice, name: 주사위, layout: row }
+  - { id: events, name: 행운 카드, layout: pile, visibility: hidden }
+  - { id: used, name: 펼친 행운 카드, layout: pile, visibility: topOnly }

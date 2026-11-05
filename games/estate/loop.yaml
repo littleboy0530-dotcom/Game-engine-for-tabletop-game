@@ -1,0 +1,35 @@
+# 한 바퀴 부동산: (턴: 주사위 → 도착 칸 처리 → 사거나 넘기기) → 파산 확인 → 다음 사람
+nodes:
+  start:   { type: start, pos: [0, 120] }
+  prepare: { type: phase, label: 준비, script: loop/prepare.lua, pos: [120, 120] }
+  turn:
+    type: loop
+    label: 턴
+    pos: [280, 120]
+    loop:
+      nodes:
+        start:  { type: start, pos: [0, 80] }
+        ready:  { type: phase, label: 턴 시작, pos: [110, 80] }
+        roll:   { type: action, label: 주사위 굴리기, script: loop/roll.lua, pos: [260, 80] }
+        landed: { type: phase, label: 도착, script: loop/landed.lua, pos: [420, 80] }
+        buy:    { type: action, label: 땅 사기, script: loop/buy.lua, pos: [580, 0] }
+        done:   { type: action, label: 턴 끝, script: loop/done.lua, pos: [580, 160] }
+        end:    { type: end, pos: [740, 80] }
+        # 공통 Action: 내 턴 동안 언제든 쓸 수 있다
+        sell:   { type: action, label: 땅 팔기, script: loop/sell.lua, common: true, pos: [260, 200] }
+      edges:
+        - [start, ready]
+        - [ready, roll]
+        - [roll, landed]
+        - [landed, buy]
+        - [landed, done]
+        - [buy, end]
+        - [done, end]
+  next: { type: phase, label: 파산 확인, script: loop/next.lua, pos: [440, 120] }
+  end:  { type: end, pos: [600, 120] }
+edges:
+  - [start, prepare]
+  - [prepare, turn]
+  - [turn, next]
+  - [next, turn]
+  - [next, end]

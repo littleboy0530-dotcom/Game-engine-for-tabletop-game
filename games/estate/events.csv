@@ -1,0 +1,7 @@
+id,label,text,effect,amount,color,count,zone
+gift,보너스,은행에서 30 받기,money,30,#3c8c4a,2,events
+fine,벌금,은행에 20 내기,money,-20,#9b2c2c,2,events
+home,출발로,출발 칸으로 이동,goto,0,#2f6fb5,1,events
+dash,질주,3칸 앞으로,move,3,#2f6fb5,2,events
+party,잔치,다른 사람에게 10씩 받기,collect,10,#3c8c4a,1,events
+repair,수리비,가진 땅마다 5 내기,repair,5,#9b2c2c,1,events

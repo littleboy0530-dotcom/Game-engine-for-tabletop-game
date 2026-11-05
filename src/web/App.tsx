@@ -5,6 +5,8 @@ import { Board, inkOn } from './Board';
 import { choicesByRef, choicesOf, type Choice } from './choices';
 import { GAMES } from './games';
 import { LoopGraph } from './LoopGraph';
+import { Mat } from './Mat';
+import { RingBoard } from './RingBoard';
 
 interface Menu {
   choices: Choice[];
@@ -16,45 +18,49 @@ function newSeed() {
   return Math.floor(Math.random() * 1_000_000);
 }
 
+function loadDef(id: string): { def: GameDef | null; error: string | null } {
+  const folder = GAMES.find((g) => g.id === id);
+  if (!folder) return { def: null, error: `게임이 없어요: ${id}` };
+  try {
+    return { def: loadGame(folder.files), error: null };
+  } catch (e) {
+    return { def: null, error: (e as Error).message };
+  }
+}
+
 export function App() {
   const [gameId, setGameId] = useState(GAMES.find((g) => g.id === 'chess')?.id ?? GAMES[0]?.id ?? '');
   const [seed, setSeed] = useState(newSeed);
   const [created, setEngine] = useState<Engine | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState<Menu | null>(null);
+  /** Hot-seat: whose eyes the screen is currently for. */
+  const [seenBy, setSeenBy] = useState<string | null>(null);
   const [, setVersion] = useState(0);
   const refresh = () => setVersion((v) => v + 1);
 
-  const def: GameDef | null = useMemo(() => {
-    const folder = GAMES.find((g) => g.id === gameId);
-    if (!folder) return null;
-    try {
-      setLoadError(null);
-      return loadGame(folder.files);
-    } catch (e) {
-      setLoadError((e as Error).message);
-      return null;
-    }
-  }, [gameId]);
+  const { def, error: loadError } = useMemo(() => loadDef(gameId), [gameId]);
 
   useEffect(() => {
     if (!def) return;
     let alive = true;
-    let created: Engine | null = null;
+    let made: Engine | null = null;
     setEngine(null);
     setMenu(null);
+    setSeenBy(null);
+    setRunError(null);
     Engine.create(def, { seed, wasmUrl }).then(
       (e) => {
-        created = e;
+        made = e;
         if (alive) setEngine(e);
         else e.close();
       },
-      (err) => alive && setLoadError(String(err)),
+      (err) => alive && setRunError(String(err)),
     );
     return () => {
       alive = false;
-      created?.close();
+      made?.close();
     };
   }, [def, seed]);
 
@@ -86,24 +92,35 @@ export function App() {
   };
 
   const pending = engine?.pending ?? null;
+  const view = engine?.view;
+  const hidden = !!engine?.hasHiddenInfo;
+  const viewer = pending?.player ?? null;
+  const covered = hidden && !!viewer && viewer !== seenBy && !view?.finished;
+
   const choices = useMemo(() => choicesOf(pending), [pending]);
   const targets = useMemo(() => choicesByRef(choices), [choices]);
-  const buttons = choices.filter((c) => !c.ref || c.ref.kind === 'player' || !onGrid(engine, c));
+  // anything not clickable on the table becomes a button
+  const buttons = choices.filter((c) => {
+    if (!c.ref || c.ref.kind === 'player') return true;
+    if (c.ref.kind === 'piece') return !engine?.isVisible(c.ref.id, viewer) && !onTable(engine, c.ref.id);
+    return false;
+  });
 
-  const pick = (list: Choice[], at: { x: number; y: number }) => {
+  const pick = (list: Choice[], e: React.MouseEvent) => {
     if (busy) return;
     if (list.length === 1) send(list[0]!.input);
-    else setMenu({ choices: list, ...at });
+    else setMenu({ choices: list, x: e.clientX, y: e.clientY });
   };
 
-  const st = engine?.state;
   const players = def?.players ?? [];
-  const current = players.find((p) => p.id === (pending?.player ?? st?.current));
-  const winner = st?.result ? players.find((p) => p.id === st.result!.winner) : undefined;
-  const offGrid = def ? Object.values(def.zones).filter((z) => z.x === null) : [];
+  const current = players.find((p) => p.id === (pending?.player ?? view?.current));
+  const winner = view?.result ? players.find((p) => p.id === view.result!.winner) : undefined;
+  const board = def?.boards[0];
+  const gridBoard = board && board.coords === 'square' ? board : null;
+  const ringBoard = board && board.coords === 'track' ? board : null;
 
   return (
-    <div className="app">
+    <div className="app" onClick={() => setMenu(null)}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden>◆</span>
@@ -129,28 +146,40 @@ export function App() {
         </div>
       </header>
 
-      {loadError && (
+      {(loadError || runError) && (
         <div className="error-box">
           <strong>게임을 불러오지 못했어요</strong>
-          <code>{loadError}</code>
+          <code>{loadError ?? runError}</code>
         </div>
       )}
 
       {def && (
         <main className="layout">
           <section className="board-area">
-            {!engine ? (
+            {!engine || !view ? (
               <div className="loading">엔진 준비 중…</div>
             ) : (
-              <div className={`board-wrap${busy ? ' is-busy' : ''}`} onClick={() => setMenu(null)}>
-                <Board engine={engine} board={def.boards[0]!} targets={targets} onPick={pick} />
-                {menu && (
-                  <div className="pick-menu" style={{ left: `${menu.x * 100}%`, top: `${menu.y * 100}%` }} onClick={(e) => e.stopPropagation()}>
-                    {menu.choices.map((c, i) => (
-                      <button key={i} className="btn btn-small" onClick={() => send(c.input)}>
-                        {c.group}
+              <div className={`table${busy ? ' is-busy' : ''}${covered ? ' is-covered' : ''}`}>
+                {gridBoard && (
+                  <div className="board-wrap">
+                    <Board engine={engine} board={gridBoard} targets={targets} onPick={pick} />
+                  </div>
+                )}
+                {ringBoard && <RingBoard engine={engine} board={ringBoard} viewer={viewer} targets={targets} onPick={pick} />}
+                <Mat engine={engine} viewer={viewer} targets={targets} onPick={pick} />
+                {covered && current && (
+                  <div className="cover">
+                    <div className="cover-box">
+                      <span className="player-chip big" style={{ background: current.color, color: inkOn(current.color) }}>{current.name}</span>
+                      <p>
+                        {current.name}에게 화면을 넘겨주세요.
+                        <br />
+                        <span className="muted">다른 사람의 손패는 가려져 있어요.</span>
+                      </p>
+                      <button className="btn btn-primary" onClick={() => setSeenBy(viewer)}>
+                        {current.name}입니다, 보여주세요
                       </button>
-                    ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -158,13 +187,13 @@ export function App() {
           </section>
 
           <aside className="side">
-            {engine && st && (
+            {engine && view && (
               <>
                 <div className="status card">
-                  {st.finished ? (
+                  {view.finished ? (
                     <div className="result">
                       <div className="result-title">{winner ? `${winner.name} 승리` : '무승부'}</div>
-                      <div className="result-reason">{st.result?.reason}</div>
+                      <div className="result-reason">{view.result?.reason}</div>
                       <button className="btn btn-primary" onClick={() => setSeed(newSeed())}>
                         한 판 더
                       </button>
@@ -176,6 +205,8 @@ export function App() {
                       {engine.error.path && <div className="muted">위치: {engine.error.path.join(' / ')}</div>}
                       {engine.error.trail && <div className="muted">반복된 노드: {engine.error.trail.slice(-6).join(' → ')}</div>}
                     </div>
+                  ) : covered ? (
+                    <div className="prompt">화면을 넘겨받을 때까지 기다리는 중</div>
                   ) : (
                     <>
                       <div className="turn">
@@ -191,7 +222,7 @@ export function App() {
                         {pending?.kind === 'choose'
                           ? pending.prompt
                           : targets.size
-                            ? '보드에서 움직일 말을 고르세요'
+                            ? '강조된 것을 눌러서 고르거나, 아래 버튼을 누르세요'
                             : '할 일을 고르세요'}
                       </div>
                       {buttons.length > 0 && (
@@ -212,33 +243,46 @@ export function App() {
                   )}
                 </div>
 
-                {offGrid.length > 0 && (
-                  <div className="card trays">
-                    {offGrid.map((z) => (
-                      <div key={z.id} className="tray">
-                        <div className="tray-name">{z.name}</div>
-                        <div className="tray-pieces">
-                          {(st.contents[z.id] ?? []).map((pid) => {
-                            const pc = st.pieces[pid]!;
-                            const color = players.find((p) => p.id === pc.owner)?.color ?? '#999';
-                            return (
-                              <span key={pid} className="mini-piece" style={{ background: color, color: inkOn(color) }}>
-                                {engine.pieceLabel(pid)}
-                              </span>
-                            );
-                          })}
-                          {!(st.contents[z.id]?.length) && <span className="muted">없음</span>}
-                        </div>
+                {(def.display.player.length > 0 || def.display.game.length > 0) && (
+                  <div className="card stats">
+                    {def.display.game.length > 0 && (
+                      <div className="game-vars">
+                        {def.display.game.map((d) => (
+                          <span key={d.key}>
+                            {d.label} <strong>{fmt(view.vars[d.key])}</strong>
+                          </span>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    {def.display.player.length > 0 && (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th />
+                            {def.display.player.map((d) => <th key={d.key}>{d.label}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {players.map((p) => (
+                            <tr key={p.id} className={p.id === current?.id ? 'is-current' : ''}>
+                              <td>
+                                <span className="dot" style={{ background: p.color }} />
+                                {p.name}
+                              </td>
+                              {def.display.player.map((d) => <td key={d.key}>{fmt(view.playerVars[p.id]?.[d.key])}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 )}
 
                 <div className="card log">
                   <div className="card-title">기록</div>
                   <ol reversed>
-                    {[...st.log].reverse().slice(0, 60).map((l, i) => (
-                      <li key={st.log.length - i}>{l}</li>
+                    {[...view.log].reverse().slice(0, 80).map((l, i) => (
+                      <li key={view.log.length - i}>{l}</li>
                     ))}
                   </ol>
                   <div className="meta">
@@ -255,27 +299,40 @@ export function App() {
             </div>
             <LoopGraph
               loop={def.loop}
-              current={st?.cursor.path ?? []}
+              current={view?.cursor.path ?? []}
               waiting={!!pending}
-              finished={!!st?.finished}
+              finished={!!view?.finished}
               errorAt={engine?.error?.path ?? null}
               trail={engine?.error?.trail}
+              available={new Set(pending?.kind === 'action' ? pending.actions.map((a) => a.path.join('/')) : [])}
             />
           </section>
         </main>
+      )}
+
+      {menu && (
+        <div className="pick-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+          {menu.choices.map((c, i) => (
+            <button key={i} className="btn btn-small" onClick={() => send(c.input)}>
+              {c.group}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-function onGrid(engine: Engine | null, c: Choice) {
-  if (!engine || !c.ref) return false;
-  if (c.ref.kind === 'zone') return engine.def.zones[c.ref.id]?.x !== null;
-  if (c.ref.kind === 'piece') {
-    const z = engine.state.pieces[c.ref.id]?.zone;
-    return !!z && engine.def.zones[z]?.x !== null;
-  }
-  return false;
+/** Is this component drawn somewhere the player can click it? */
+function onTable(engine: Engine | null, id: string) {
+  if (!engine) return false;
+  return !!engine.view.pieces[id]?.zone;
+}
+
+function fmt(v: unknown) {
+  if (v === undefined || v === null || v === '') return '–';
+  if (typeof v === 'boolean') return v ? '예' : '아니요';
+  return String(v);
 }
 
 function gameName(files: Record<string, string>) {

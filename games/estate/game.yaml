@@ -1,0 +1,24 @@
+name: 한 바퀴 부동산 (주사위)
+players:
+  - { id: p1, name: 해솔, color: "#2f6fb5" }
+  - { id: p2, name: 다온, color: "#b5562b" }
+  - { id: p3, name: 라온, color: "#3c8c4a" }
+
+pieceTypes:
+  pawn: { label: "●" }
+  flag: { label: "⚑" }   # 땅 주인 표시
+
+diceTypes:
+  d6: {}
+
+cards: events.csv
+
+setup:
+  - { type: pawn, owner: p1, at: 0 }
+  - { type: pawn, owner: p2, at: 0 }
+  - { type: pawn, owner: p3, at: 0 }
+  - { type: d6, zone: dice, count: 2 }
+
+display:
+  player: { money: 돈, assets: 총 재산, status: 상태 }
+  game: { round: 라운드 }

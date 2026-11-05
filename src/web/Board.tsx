@@ -5,7 +5,7 @@ interface Props {
   engine: Engine;
   board: BoardDef;
   targets: Map<string, Choice[]>;
-  onPick: (choices: Choice[], at: { x: number; y: number }) => void;
+  onPick: (choices: Choice[], e: React.MouseEvent) => void;
 }
 
 const CELL = 60;
@@ -22,7 +22,8 @@ export function inkOn(hex: string) {
 }
 
 export function Board({ engine, board, targets, onPick }: Props) {
-  const { def, state } = engine;
+  const { def } = engine;
+  const state = engine.view;
   const points = board.style === 'points';
   const gap = points ? POINT_GAP : CELL;
   const margin = points ? MARGIN : 0;
@@ -38,11 +39,10 @@ export function Board({ engine, board, targets, onPick }: Props) {
   };
 
   const gridZones = board.grid.filter((z): z is string => !!z);
-  const pick = (choices: Choice[] | undefined, zid: string) => (e: React.MouseEvent) => {
+  const pick = (choices: Choice[] | undefined) => (e: React.MouseEvent) => {
     if (!choices?.length) return;
     e.stopPropagation();
-    const c = center(zid);
-    onPick(choices, { x: c.cx / w, y: c.cy / h });
+    onPick(choices, e);
   };
 
   return (
@@ -84,7 +84,7 @@ export function Board({ engine, board, targets, onPick }: Props) {
         const { cx, cy } = center(zid);
         const occupied = (state.contents[zid]?.length ?? 0) > 0;
         return (
-          <g key={`t-${zid}`} className="zone-target" onClick={pick(choices, zid)}>
+          <g key={`t-${zid}`} className="zone-target" onClick={pick(choices)}>
             <rect x={cx - gap / 2} y={cy - gap / 2} width={gap} height={gap} fill="transparent" />
             {occupied
               ? <circle cx={cx} cy={cy} r={gap * 0.46} className="capture-ring" />
@@ -109,7 +109,7 @@ export function Board({ engine, board, targets, onPick }: Props) {
               key={pid}
               className={`piece${own ? ' piece-selectable' : ''}${choices ? ' clickable' : ''}`}
               transform={`translate(${cx + i * 3}, ${cy - i * 3})`}
-              onClick={pick(choices, zid)}
+              onClick={pick(choices)}
             >
               <circle r={r} fill={fill} className="piece-body" />
               <text className="piece-label" fill={inkOn(fill)} dy="0.36em" fontSize={r * (points ? 0.95 : 1.15)}>

@@ -1,5 +1,5 @@
 // Every folder under /games becomes a playable game. Files are bundled as text.
-const raw = import.meta.glob('/games/**/*.{yaml,lua}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+const raw = import.meta.glob('/games/**/*.{yaml,lua,csv}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
 export interface GameFolder {
   id: string;
