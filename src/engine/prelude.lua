@@ -192,6 +192,32 @@ BoardMT.__index = Board
 BoardMT.__newindex = readonly("보드")
 
 function Board:zoneAt(x, y) return zone(js.zoneAt(self.id, x, y)) end
+-- 이 칸을 지나는 직선(가로, 세로, 대각선 두 방향) 중 fn을 만족하는 칸이 n개 이상 이어진 줄이 있는가
+function Board:line(z, n, fn)
+  for _, d in ipairs({ { 1, 0 }, { 0, 1 }, { 1, 1 }, { 1, -1 } }) do
+    local count = 1
+    for _, sign in ipairs({ 1, -1 }) do
+      local x, y = z.x + d[1] * sign, z.y + d[2] * sign
+      while true do
+        local nz = self:zoneAt(x, y)
+        if not nz or not fn(nz) then break end
+        count = count + 1
+        x, y = x + d[1] * sign, y + d[2] * sign
+      end
+    end
+    if count >= n then return true end
+  end
+  return false
+end
+
+-- 좌표가 있는 칸이 모두 차 있는가
+function Board:isFull()
+  for _, z in ipairs(self:zones()) do
+    if z.x and z:isEmpty() then return false end
+  end
+  return true
+end
+
 -- coords: open 보드에 칸을 더한다 (이미 있으면 그 칸)
 function Board:addZone(x, y) return zone(js.addZone(self.id, x, y)) end
 function Board:zones() return list(js.boardZones(self.id), zone) end

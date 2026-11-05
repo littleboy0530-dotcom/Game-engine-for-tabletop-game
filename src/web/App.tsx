@@ -1,347 +1,165 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import wasmUrl from 'wasmoon/dist/glue.wasm?url';
-import { Engine, loadGame, type GameDef, type Input } from '../engine';
-import { Board, inkOn } from './Board';
-import { choicesByRef, choicesOf, type Choice } from './choices';
+import { useEffect, useRef, useState } from 'react';
+import { Editor } from './editor/Editor';
 import { GAMES } from './games';
-import { LoopGraph } from './LoopGraph';
-import { Mat } from './Mat';
-import { RingBoard } from './RingBoard';
-import { TileBoard } from './TileBoard';
-import { CardLayout } from './CardLayout';
+import { PlayView } from './PlayView';
+import {
+  TEMPLATES, deleteProject, exportProject, importProject, loadProjects, newId, saveProject, type Project,
+} from './projects';
 
-interface Menu {
-  choices: Choice[];
-  x: number;
-  y: number;
-}
+type Mode = 'play' | 'make';
 
-function newSeed() {
-  return Math.floor(Math.random() * 1_000_000);
-}
-
-function loadDef(id: string): { def: GameDef | null; error: string | null } {
-  const folder = GAMES.find((g) => g.id === id);
-  if (!folder) return { def: null, error: `게임이 없어요: ${id}` };
-  try {
-    return { def: loadGame(folder.files), error: null };
-  } catch (e) {
-    return { def: null, error: (e as Error).message };
-  }
+function gameName(files: Record<string, string>) {
+  return /^name:\s*(.+)$/m.exec(files['game.yaml'] ?? '')?.[1]?.trim().replace(/^["']|["']$/g, '');
 }
 
 export function App() {
-  const [gameId, setGameId] = useState(GAMES.find((g) => g.id === 'chess')?.id ?? GAMES[0]?.id ?? '');
-  const [seed, setSeed] = useState(newSeed);
-  const [created, setEngine] = useState<Engine | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [menu, setMenu] = useState<Menu | null>(null);
-  /** Hot-seat: whose eyes the screen is currently for. */
-  const [seenBy, setSeenBy] = useState<string | null>(null);
-  const [, setVersion] = useState(0);
-  const refresh = () => setVersion((v) => v + 1);
+  const [mode, setMode] = useState<Mode>('play');
+  const [projects, setProjects] = useState<Project[]>(loadProjects);
+  const [selection, setSelection] = useState(`builtin:${GAMES.find((g) => g.id === 'chess')?.id ?? GAMES[0]?.id}`);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
 
-  const { def, error: loadError } = useMemo(() => loadDef(gameId), [gameId]);
-
+  // keep the play selection valid if a project disappears
   useEffect(() => {
-    if (!def) return;
-    let alive = true;
-    let made: Engine | null = null;
-    setEngine(null);
-    setMenu(null);
-    setSeenBy(null);
-    setRunError(null);
-    Engine.create(def, { seed, wasmUrl }).then(
-      (e) => {
-        made = e;
-        if (alive) setEngine(e);
-        else e.close();
-      },
-      (err) => alive && setRunError(String(err)),
-    );
-    return () => {
-      alive = false;
-      made?.close();
-    };
-  }, [def, seed]);
+    if (selection.startsWith('project:') && !projects.some((p) => `project:${p.id}` === selection)) {
+      setSelection(`builtin:${GAMES[0]?.id}`);
+    }
+  }, [projects, selection]);
 
-  // the engine of the previous game can linger for one render after switching games
-  const engine = created && created.def === def && created.seed === seed ? created : null;
+  const files = selection.startsWith('project:')
+    ? projects.find((p) => `project:${p.id}` === selection)?.files
+    : GAMES.find((g) => `builtin:${g.id}` === selection)?.files;
 
-  const send = useCallback(
-    (input: Input) => {
-      if (!engine) return;
-      setMenu(null);
-      setBusy(true);
-      // let the browser paint the busy state before the (synchronous) engine work
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          engine.input(input);
-          setBusy(false);
-          refresh();
-        }, 0);
-      });
-    },
-    [engine],
-  );
-
-  const undo = () => {
-    if (!engine) return;
-    setMenu(null);
-    engine.undoToAction();
-    refresh();
+  const update = (p: Project) => {
+    setProjects((list) => list.map((x) => (x.id === p.id ? p : x)));
+    if (!saveProject(p)) setNotice('브라우저에 저장하지 못했어요. 파일로 내보내서 보관해 주세요.');
   };
 
-  const pending = engine?.pending ?? null;
-  const view = engine?.view;
-  const hidden = !!engine?.hasHiddenInfo;
-  const viewer = pending?.player ?? null;
-  const covered = hidden && !!viewer && viewer !== seenBy && !view?.finished;
-
-  const choices = useMemo(() => choicesOf(pending), [pending]);
-  const targets = useMemo(() => choicesByRef(choices), [choices]);
-  // anything not clickable on the table becomes a button
-  const buttons = choices.filter((c) => {
-    if (!c.ref || c.ref.kind === 'player') return true;
-    if (c.ref.kind === 'piece') return !engine?.isVisible(c.ref.id, viewer) && !onTable(engine, c.ref.id);
-    return false;
-  });
-
-  const pick = (list: Choice[], e: React.MouseEvent) => {
-    if (busy) return;
-    if (list.length === 1) send(list[0]!.input);
-    else setMenu({ choices: list, x: e.clientX, y: e.clientY });
+  const create = (name: string, f: Record<string, string>) => {
+    const p: Project = { id: newId(), name, files: f, updated: Date.now() };
+    setProjects((list) => [p, ...list]);
+    saveProject(p);
+    setEditing(p.id);
+    setMode('make');
   };
 
-  const players = def?.players ?? [];
-  const current = players.find((p) => p.id === (pending?.player ?? view?.current));
-  const winner = view?.result ? players.find((p) => p.id === view.result!.winner) : undefined;
-  const board = def?.boards[0];
-  const gridBoard = board && board.coords === 'square' && board.style !== 'cards' ? board : null;
-  const cardBoard = board && board.style === 'cards' ? board : null;
-  const ringBoard = board && board.coords === 'track' ? board : null;
-  const tileBoard = board && board.coords === 'open' ? board : null;
+  const editingProject = projects.find((p) => p.id === editing) ?? null;
 
   return (
-    <div className="app" onClick={() => setMenu(null)}>
+    <div className="app">
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden>◆</span>
           <span>Tabletop Engine</span>
         </div>
-        <label className="game-select">
-          <span>게임</span>
-          <select value={gameId} onChange={(e) => setGameId(e.target.value)}>
-            {GAMES.map((g) => (
-              <option key={g.id} value={g.id}>
-                {gameName(g.files) ?? g.id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="topbar-actions">
-          <button className="btn" onClick={undo} disabled={!engine?.canUndo || busy}>
-            되돌리기
-          </button>
-          <button className="btn" onClick={() => setSeed(newSeed())} disabled={busy}>
-            새 게임
-          </button>
-        </div>
+        <nav className="mode-tabs" role="tablist">
+          <button role="tab" aria-selected={mode === 'play'} className={`tab${mode === 'play' ? ' is-on' : ''}`} onClick={() => setMode('play')}>플레이</button>
+          <button role="tab" aria-selected={mode === 'make'} className={`tab${mode === 'make' ? ' is-on' : ''}`} onClick={() => setMode('make')}>만들기</button>
+        </nav>
+        {mode === 'play' && (
+          <label className="game-select">
+            <span>게임</span>
+            <select value={selection} onChange={(e) => setSelection(e.target.value)}>
+              {projects.length > 0 && (
+                <optgroup label="내가 만든 게임">
+                  {projects.map((p) => <option key={p.id} value={`project:${p.id}`}>{p.name}</option>)}
+                </optgroup>
+              )}
+              <optgroup label="예제 게임">
+                {GAMES.map((g) => <option key={g.id} value={`builtin:${g.id}`}>{gameName(g.files) ?? g.id}</option>)}
+              </optgroup>
+            </select>
+          </label>
+        )}
+        {mode === 'play' && selection.startsWith('project:') && (
+          <button className="btn" onClick={() => { setEditing(selection.slice(8)); setMode('make'); }}>이 게임 고치기</button>
+        )}
       </header>
 
-      {(loadError || runError) && (
-        <div className="error-box">
-          <strong>게임을 불러오지 못했어요</strong>
-          <code>{loadError ?? runError}</code>
+      {notice && (
+        <div className="error-box" onClick={() => setNotice(null)}>
+          <span>{notice}</span>
         </div>
       )}
 
-      {def && (
-        <main className="layout">
-          <section className="board-area">
-            {!engine || !view ? (
-              <div className="loading">엔진 준비 중…</div>
-            ) : (
-              <div className={`table${busy ? ' is-busy' : ''}${covered ? ' is-covered' : ''}`}>
-                {gridBoard && (
-                  <div className="board-wrap">
-                    <Board engine={engine} board={gridBoard} targets={targets} onPick={pick} />
-                  </div>
-                )}
-                {ringBoard && <RingBoard engine={engine} board={ringBoard} viewer={viewer} targets={targets} onPick={pick} />}
-                {tileBoard && <TileBoard engine={engine} board={tileBoard} targets={targets} onPick={pick} />}
-                {cardBoard && <CardLayout engine={engine} board={cardBoard} viewer={viewer} targets={targets} onPick={pick} />}
-                <Mat engine={engine} viewer={viewer} targets={targets} onPick={pick} />
-                {covered && current && (
-                  <div className="cover">
-                    <div className="cover-box">
-                      <span className="player-chip big" style={{ background: current.color, color: inkOn(current.color) }}>{current.name}</span>
-                      <p>
-                        {current.name}에게 화면을 넘겨주세요.
-                        <br />
-                        <span className="muted">다른 사람의 손패는 가려져 있어요.</span>
-                      </p>
-                      <button className="btn btn-primary" onClick={() => setSeenBy(viewer)}>
-                        {current.name}입니다, 보여주세요
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
+      {mode === 'play' && files && <PlayView gameKey={selection} files={files} />}
 
-          <aside className="side">
-            {engine && view && (
-              <>
-                <div className="status card">
-                  {view.finished ? (
-                    <div className="result">
-                      <div className="result-title">{winner ? `${winner.name} 승리` : '무승부'}</div>
-                      <div className="result-reason">{view.result?.reason}</div>
-                      <button className="btn btn-primary" onClick={() => setSeed(newSeed())}>
-                        한 판 더
-                      </button>
-                    </div>
-                  ) : engine.error ? (
-                    <div className="error-inline">
-                      <strong>규칙 스크립트 오류</strong>
-                      <code>{engine.error.message}</code>
-                      {engine.error.path && <div className="muted">위치: {engine.error.path.join(' / ')}</div>}
-                      {engine.error.trail && <div className="muted">반복된 노드: {engine.error.trail.slice(-6).join(' → ')}</div>}
-                    </div>
-                  ) : covered ? (
-                    <div className="prompt">화면을 넘겨받을 때까지 기다리는 중</div>
-                  ) : (
-                    <>
-                      <div className="turn">
-                        {current && (
-                          <span className="player-chip" style={{ background: current.color, color: inkOn(current.color) }}>
-                            {current.name}
-                          </span>
-                        )}
-                        <span>의 차례</span>
-                        {busy && <span className="spinner" aria-label="계산 중" />}
-                      </div>
-                      <div className="prompt">
-                        {pending?.kind === 'choose'
-                          ? pending.prompt
-                          : targets.size
-                            ? '강조된 것을 눌러서 고르거나, 아래 버튼을 누르세요'
-                            : '할 일을 고르세요'}
-                      </div>
-                      {buttons.length > 0 && (
-                        <div className="buttons">
-                          {buttons.map((c, i) => (
-                            <button key={i} className="btn" onClick={() => send(c.input)} disabled={busy}>
-                              {c.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {pending?.kind === 'choose' && (
-                        <button className="btn btn-ghost" onClick={undo} disabled={busy}>
-                          취소
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {(def.display.player.length > 0 || def.display.game.length > 0) && (
-                  <div className="card stats">
-                    {def.display.game.length > 0 && (
-                      <div className="game-vars">
-                        {def.display.game.map((d) => (
-                          <span key={d.key}>
-                            {d.label} <strong>{fmt(view.vars[d.key])}</strong>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {def.display.player.length > 0 && (
-                      <table>
-                        <thead>
-                          <tr>
-                            <th />
-                            {def.display.player.map((d) => <th key={d.key}>{d.label}</th>)}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {players.map((p) => (
-                            <tr key={p.id} className={p.id === current?.id ? 'is-current' : ''}>
-                              <td>
-                                <span className="dot" style={{ background: p.color }} />
-                                {p.name}
-                                {engine.isScripted(p.id) && <span className="muted"> (자동)</span>}
-                              </td>
-                              {def.display.player.map((d) => <td key={d.key}>{fmt(view.playerVars[p.id]?.[d.key])}</td>)}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                )}
-
-                <div className="card log">
-                  <div className="card-title">기록</div>
-                  <ol reversed>
-                    {[...view.log].reverse().slice(0, 80).map((l, i) => (
-                      <li key={view.log.length - i}>{l}</li>
-                    ))}
-                  </ol>
-                  <div className="meta">
-                    시드 {engine.seed} · 입력 {engine.inputs.length}개
-                  </div>
-                </div>
-              </>
-            )}
-          </aside>
-
-          <section className="loop-area card">
-            <div className="card-title">
-              게임 루프 <span className="muted">— 지금 위치가 강조돼요</span>
-            </div>
-            <LoopGraph
-              loop={def.loop}
-              current={view?.cursor.path ?? []}
-              waiting={!!pending}
-              finished={!!view?.finished}
-              errorAt={engine?.error?.path ?? null}
-              trail={engine?.error?.trail}
-              available={new Set(pending?.kind === 'action' ? pending.actions.map((a) => a.path.join('/')) : [])}
-            />
-          </section>
-        </main>
+      {mode === 'make' && editingProject && (
+        <Editor
+          project={editingProject}
+          onChange={update}
+          onPlay={() => { setSelection(`project:${editingProject.id}`); setMode('play'); }}
+          onExport={() => exportProject(editingProject)}
+          onClose={() => setEditing(null)}
+        />
       )}
 
-      {menu && (
-        <div className="pick-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          {menu.choices.map((c, i) => (
-            <button key={i} className="btn btn-small" onClick={() => send(c.input)}>
-              {c.group}
-            </button>
-          ))}
+      {mode === 'make' && !editingProject && (
+        <div className="projects">
+          <section className="card">
+            <h2>새 게임 만들기</h2>
+            <p className="muted">틀을 하나 골라서 시작해요. 무엇이든 나중에 바꿀 수 있어요.</p>
+            <div className="template-grid">
+              {TEMPLATES.map((t) => (
+                <button key={t.id} className="template" onClick={() => create(t.label, t.files())}>
+                  <strong>{t.label}</strong>
+                  <span className="muted">{t.help}</span>
+                </button>
+              ))}
+            </div>
+            <div className="row">
+              <span className="muted">예제 게임을 복사해서 시작하기:</span>
+              <select aria-label="복사할 예제" id="copy-src" defaultValue="">
+                <option value="" disabled>예제 고르기</option>
+                {GAMES.map((g) => <option key={g.id} value={g.id}>{gameName(g.files) ?? g.id}</option>)}
+              </select>
+              <button className="btn btn-small" onClick={() => {
+                const id = (document.getElementById('copy-src') as HTMLSelectElement).value;
+                const g = GAMES.find((x) => x.id === id);
+                if (g) create(`${gameName(g.files) ?? g.id} (복사본)`, { ...g.files });
+              }}>복사해서 만들기</button>
+            </div>
+            <div className="row">
+              <button className="btn btn-small" onClick={() => importInput.current?.click()}>파일에서 가져오기</button>
+              <input ref={importInput} type="file" accept=".json,application/json" hidden onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                try {
+                  const p = await importProject(f);
+                  create(p.name, p.files);
+                } catch (err) {
+                  setNotice(`가져오지 못했어요: ${(err as Error).message}`);
+                }
+              }} />
+            </div>
+          </section>
+
+          <section className="card">
+            <h2>내가 만든 게임</h2>
+            {projects.length === 0 && <p className="muted">아직 없어요. 위에서 새 게임을 만들어 보세요.</p>}
+            <ul className="project-list">
+              {projects.map((p) => (
+                <li key={p.id} className="project-row">
+                  <strong>{p.name}</strong>
+                  <span className="muted">{new Date(p.updated).toLocaleString()}</span>
+                  <div className="row">
+                    <button className="btn btn-small" onClick={() => setEditing(p.id)}>고치기</button>
+                    <button className="btn btn-small" onClick={() => { setSelection(`project:${p.id}`); setMode('play'); }}>플레이</button>
+                    <button className="btn btn-small" onClick={() => exportProject(p)}>내보내기</button>
+                    <button className="btn btn-small" onClick={() => {
+                      if (!confirm(`'${p.name}'을(를) 지울까요? 되돌릴 수 없어요.`)) return;
+                      deleteProject(p.id);
+                      setProjects((list) => list.filter((x) => x.id !== p.id));
+                    }}>지우기</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         </div>
       )}
     </div>
   );
-}
-
-/** Is this component drawn somewhere the player can click it? */
-function onTable(engine: Engine | null, id: string) {
-  if (!engine) return false;
-  return !!engine.view.pieces[id]?.zone;
-}
-
-function fmt(v: unknown) {
-  if (v === undefined || v === null || v === '') return '–';
-  if (typeof v === 'boolean') return v ? '예' : '아니요';
-  return String(v);
-}
-
-function gameName(files: Record<string, string>) {
-  return /^name:\s*(.+)$/m.exec(files['game.yaml'] ?? '')?.[1]?.trim();
 }

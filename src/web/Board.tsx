@@ -64,7 +64,7 @@ export function Board({ engine, board, targets, onPick }: Props) {
           return <line key={`${a}-${b}`} className="grid-line" x1={p.cx} y1={p.cy} x2={q.cx} y2={q.cy} />;
         })}
 
-      {!points && board.width <= 26 && (
+      {!points && board.width <= 26 && !gridZones.some((z) => def.zones[z]!.name.includes(',')) && (
         <g className="coords" aria-hidden>
           {gridZones.filter((z) => def.zones[z]!.y === 0).map((zid) => {
             const { cx } = center(zid);
