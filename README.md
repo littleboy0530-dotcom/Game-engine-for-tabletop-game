@@ -3,14 +3,36 @@
 아이디어만 있으면 누구나 보드게임 MVP를 빠르게 만들고 재미를 검증할 수 있는 웹 기반 보드게임 프로토타이핑 엔진.
 
 - 보드는 **존의 그래프**, 게임 규칙은 **루프 그래프**로 그린다.
-- 노드에 Lua 스크립트를 붙여 판정과 효과를 작성한다.
+- 노드와 말에 Lua 스크립트를 붙여 판정과 효과를 작성한다.
+- 플레이 중에 루프 그래프에서 지금 진행 위치가 표시된다.
 
-설계 문서: [docs/DESIGN.md](docs/DESIGN.md)
+| 문서 | 내용 |
+|---|---|
+| [docs/GUIDE.md](docs/GUIDE.md) | 게임 만들기 가이드와 Lua API |
+| [docs/DESIGN.md](docs/DESIGN.md) | 엔진 설계 |
 
-## 기술 검증
+## 지금 들어 있는 게임
+- 체스: 캐슬링, 앙파상, 승격, 체크메이트, 스테일메이트, 50수 규칙
+- 장기: 상차림 선택, 궁성의 선, 포 규칙, 장군, 외통수
+
+## 실행
 
 ```bash
-cd spike && npm install
-node spike1.mjs   # 코루틴 방식의 한계 확인
-node spike2.mjs   # 되돌림 + 다시 실행 방식, 기록 재생 결정성 확인
+npm install
 ```
+```bash
+npm run dev
+```
+
+터미널에 나오는 주소(보통 `http://localhost:5173`)를 브라우저로 연다.
+
+```bash
+npm test
+```
+
+## 배포
+`main` 브랜치에 올라가면 GitHub Actions가 테스트 후 GitHub Pages에 배포한다.
+저장소 Settings → Pages → Source를 **GitHub Actions**로 설정해야 한다.
+
+## 기술 검증
+[`spike/`](spike)에 Lua 연동 방식을 정한 검증 코드가 있다.

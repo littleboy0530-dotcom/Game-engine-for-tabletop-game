@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // relative asset paths so the build works under any GitHub Pages sub-path
+  base: './',
   server: { host: true },
   test: { include: ['tests/**/*.test.ts'], testTimeout: 30000 },
 });
