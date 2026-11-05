@@ -32,7 +32,8 @@ export function pick(e: Engine, label: string, node?: string): Input {
   }
   for (const a of p.actions) {
     if (node && a.path[a.path.length - 1] !== node) continue;
-    const i = a.options.findIndex((o) => o.label === label);
+    // button-style actions (no options) are picked by the action's own label
+    const i = a.options.findIndex((o) => (o.label || a.label) === label);
     if (i >= 0) return { kind: 'action', node: a.path[a.path.length - 1]!, option: i };
   }
   throw new Error(`action option '${label}' not found in ${JSON.stringify(p.actions.map((a) => [a.label, a.options.map((o) => o.label)]))}`);

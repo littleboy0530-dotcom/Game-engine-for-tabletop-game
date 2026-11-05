@@ -113,7 +113,7 @@ describe('loop graph', () => {
 
   it('replays the same inputs to the same state (random included)', async () => {
     const e = await startGame(counter, 1234);
-    play(e, '', '', '');
+    play(e, '굴리기', '굴리기', '굴리기');
     // all three moves were rolls
     const again = await replay(e.def, 1234, e.inputs);
     expect(again.state).toEqual(e.state);

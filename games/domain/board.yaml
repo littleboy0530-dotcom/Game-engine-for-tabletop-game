@@ -1,0 +1,21 @@
+# 작은 영지의 플레이 매트: 공급처, 폐기, 그리고 플레이어마다 덱/손패/낸 카드/버린 카드
+id: mat
+coords: none
+zones:
+  - { id: supply_copper, name: 동전, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_silver, name: 은괴, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_gold, name: 금괴, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_hut, name: 오두막, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_manor, name: 저택, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_citadel, name: 성채, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_square, name: 마을 광장, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_merchant, name: 상인, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_cart, name: 수레, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_scholar, name: 학자, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_sweeper, name: 정리꾼, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: supply_raider, name: 약탈자, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: trash, name: 폐기, layout: pile, visibility: topOnly, group: 공급처 }
+  - { id: deck, name: 덱, perPlayer: true, layout: pile, visibility: hidden }
+  - { id: hand, name: 손패, perPlayer: true, layout: row, visibility: owner }
+  - { id: play, name: 낸 카드, perPlayer: true, layout: row }
+  - { id: discard, name: 버린 카드, perPlayer: true, layout: pile, visibility: topOnly }

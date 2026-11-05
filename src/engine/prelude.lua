@@ -60,6 +60,10 @@ local function zone(id)
     rawset(z, "y", info.y)
     rawset(z, "tags", info.tags or {})
     rawset(z, "_board", info.board)
+    rawset(z, "_owner", info.owner)
+    rawset(z, "props", freeze(info.props or {}, "존의 props"))
+    rawset(z, "layout", info.layout)
+    rawset(z, "visibility", info.visibility)
     cache.zone[id] = z
   end
   return z
@@ -118,6 +122,10 @@ PieceMT.__index = function(p, k)
   elseif k == "tags" then return js.pieceTags(id)
   elseif k == "props" then return propsProxy(id)
   elseif k == "exists" then return js.pieceExists(id)
+  elseif k == "kind" then return js.pieceKind(id)
+  elseif k == "face" then return js.pieceFace(id)
+  elseif k == "value" then return js.pieceValue(id)
+  elseif k == "text" then return js.pieceText(id)
   end
   return nil
 end
@@ -134,6 +142,7 @@ ZoneMT.__index = function(z, k)
   local m = Zone[k]
   if m then return m end
   if k == "board" then return board(rawget(z, "_board")) end
+  if k == "owner" then return player(rawget(z, "_owner")) end
   return nil
 end
 ZoneMT.__newindex = readonly("존")
@@ -143,10 +152,18 @@ function Zone:hasTag(tag)
   for _, t in ipairs(self.tags) do if t == tag then return true end end
   return false
 end
-function Zone:pieces() return list(js.zoneContents(self.id), piece) end
-function Zone:piece()
+-- 존 안의 컴포넌트는 아래(처음)부터 위(마지막) 순서
+function Zone:components() return list(js.zoneContents(self.id), piece) end
+Zone.pieces = Zone.components
+Zone.cards = Zone.components
+function Zone:top()
   local ids = js.zoneContents(self.id)
   return piece(ids[#ids])
+end
+Zone.piece = Zone.top
+function Zone:bottom()
+  local ids = js.zoneContents(self.id)
+  return piece(ids[1])
 end
 function Zone:isEmpty() return #js.zoneContents(self.id) == 0 end
 function Zone:count() return #js.zoneContents(self.id) end
@@ -166,7 +183,13 @@ PlayerMT.__index = Player
 PlayerMT.__newindex = readonly("플레이어")
 PlayerMT.__tostring = function(p) return "Player(" .. rawget(p, "id") .. ")" end
 
-function Player:pieces(ptype) return list(js.pieces(ptype, self.id), piece) end
+function Player:pieces(ptype) return list(js.pieces(ptype, self.id, "piece"), piece) end
+function Player:cards(ctype) return list(js.pieces(ctype, self.id, "card"), piece) end
+function Player:zone(name)
+  local id = js.playerZone(name, self.id)
+  if not id then error("플레이어별 존이 없어요: " .. tostring(name), 2) end
+  return zone(id)
+end
 
 ------------------------------------------------------------------------
 -- Encoding values that cross into JS (vars, props, choose options)
@@ -205,7 +228,10 @@ local function describe(v)
   local t = type(v)
   if t == "table" then
     local mt = getmetatable(v)
-    if mt == PieceMT then return v.label .. " (" .. (v.zone and v.zone.name or "-") .. ")" end
+    if mt == PieceMT then
+      if v.kind ~= "piece" then return v.label end
+      return v.label .. " (" .. (v.zone and v.zone.name or "-") .. ")"
+    end
     if mt == ZoneMT then return v.name end
     if mt == PlayerMT then return v.name end
     if v.label then return tostring(v.label) end
@@ -288,16 +314,30 @@ function game:setCurrentPlayer(p) js.setCurrent(p.id) end
 function game:nextPlayer() return player(js.nextPlayer()) end
 function game:playerAfter(p) return player(js.playerAfter(p.id)) end
 function game:board(id) return board(id or js.firstBoard()) end
-function game:zone(id) return zone(id) end
+function game:zone(id, p)
+  if p then return p:zone(id) end
+  return zone(id)
+end
 function game:piece(id) return piece(id) end
-function game:pieces(ptype, owner) return list(js.pieces(ptype, owner and owner.id), piece) end
+game.component = game.piece
+function game:pieces(ptype, owner) return list(js.pieces(ptype, owner and owner.id, "piece"), piece) end
+function game:cards(ctype, owner) return list(js.pieces(ctype, owner and owner.id, "card"), piece) end
+function game:dice(dtype, owner) return list(js.pieces(dtype, owner and owner.id, "die"), piece) end
+function game:components(ctype, owner) return list(js.pieces(ctype, owner and owner.id), piece) end
 
 function game:create(ptype, owner, z)
   return piece(js.create(ptype, owner and owner.id, z.id))
 end
-function game:move(p, z) js.move(p.id, z.id) end
+-- where: "top"(기본) 또는 "bottom"
+function game:move(p, z, where) js.move(p.id, z.id, where) end
 function game:remove(p) js.remove(p.id) end
-function game:roll(sides) return js.roll(sides or 6) end
+function game:shuffle(z) js.shuffle(z.id) end
+function game:flip(p, face) js.flip(p.id, face) end
+-- game:roll(6) → 1~6 숫자, game:roll(주사위) → 주사위를 굴리고 나온 면의 값
+function game:roll(x)
+  if type(x) == "table" and getmetatable(x) == PieceMT then return js.rollDie(x.id) end
+  return js.roll(x or 6)
+end
 function game:log(...) base.print(...) end
 
 function game:choose(p, options, prompt)

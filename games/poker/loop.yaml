@@ -1,0 +1,57 @@
+# 포커: 한 판(hand)을 반복하다가 칩을 가진 사람이 한 명 남으면 끝
+nodes:
+  start:  { type: start, pos: [0, 100] }
+  seat:   { type: phase, label: 칩 나누기, script: loop/seat.lua, pos: [130, 100] }
+  hand:
+    type: loop
+    label: 한 판
+    pos: [300, 100]
+    loop:
+      nodes:
+        start:    { type: start, pos: [0, 100] }
+        deal:     { type: phase, label: 카드 돌리기, script: loop/deal.lua, pos: [130, 100] }
+        street:   { type: phase, label: 다음 단계, script: loop/street.lua, pos: [320, 100] }
+        betting:
+          type: loop
+          label: 베팅 라운드
+          pos: [520, 0]
+          loop:
+            nodes:
+              start: { type: start, pos: [0, 100] }
+              act:   { type: phase, label: 차례, pos: [130, 100] }
+              fold:  { type: action, label: 폴드, script: loop/fold.lua, pos: [320, 0] }
+              check: { type: action, label: 체크, script: loop/check.lua, pos: [320, 70] }
+              call:  { type: action, label: 콜, script: loop/call.lua, pos: [320, 140] }
+              raise: { type: action, label: 레이즈, script: loop/raise.lua, pos: [320, 210] }
+              next:  { type: phase, label: 다음 사람, script: loop/next.lua, pos: [520, 100] }
+              end:   { type: end, pos: [700, 100] }
+            edges:
+              - [start, act]
+              - [act, fold]
+              - [act, check]
+              - [act, call]
+              - [act, raise]
+              - [fold, next]
+              - [check, next]
+              - [call, next]
+              - [raise, next]
+              - [next, act]
+              - [next, end]
+        showdown: { type: phase, label: 쇼다운, script: loop/showdown.lua, pos: [520, 200] }
+        end:      { type: end, pos: [700, 200] }
+      edges:
+        - [start, deal]
+        - [deal, street]
+        - [street, betting]
+        - [street, street]
+        - [street, showdown]
+        - [betting, street]
+        - [showdown, end]
+  standings: { type: phase, label: 탈락 확인, script: loop/standings.lua, pos: [480, 100] }
+  end:       { type: end, pos: [640, 100] }
+edges:
+  - [start, seat]
+  - [seat, hand]
+  - [hand, standings]
+  - [standings, hand]
+  - [standings, end]

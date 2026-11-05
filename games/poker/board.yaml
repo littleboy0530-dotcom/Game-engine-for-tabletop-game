@@ -1,0 +1,8 @@
+id: table
+coords: none
+zones:
+  - { id: deck, name: 덱, layout: pile, visibility: hidden }
+  - { id: community, name: 공용 카드, layout: row }
+  - { id: muck, name: 버린 카드, layout: pile, visibility: hidden }
+  - { id: hand, name: 손패, perPlayer: true, layout: row, visibility: owner }
+  - { id: shown, name: 공개한 패, perPlayer: true, layout: row }

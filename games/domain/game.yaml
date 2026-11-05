@@ -1,0 +1,15 @@
+name: 작은 영지 (덱빌딩)
+players:
+  - { id: a, name: 가온, color: "#2f6fb5" }
+  - { id: b, name: 나린, color: "#b5562b" }
+
+# 카드 종류와 공급처에 놓일 장수는 cards.csv에 있다
+cards: cards.csv
+
+# 시작 덱: 동전 7장, 오두막 3장
+setup:
+  - { type: copper, zone: deck, perPlayer: true, count: 7 }
+  - { type: hut, zone: deck, perPlayer: true, count: 3 }
+
+display:
+  player: { actions: 액션, buys: 구매, coins: 코인, points: 승점 }

@@ -1,8 +1,9 @@
 import { LuaFactory, type LuaEngine } from 'wasmoon';
 import prelude from './prelude.lua?raw';
 import type {
-  ActionView, EngineError, GameDef, GameState, Input, Json, LoopDef, OptionView, Pending, Ref,
+  ActionView, EngineError, GameDef, GameState, Input, Json, LoopDef, NodeDef, OptionView, Pending, Ref,
 } from './types';
+import { playerZoneId } from './loader';
 
 /** Node transitions allowed without player input before the engine stops. */
 export const LOOP_LIMIT = 32;
@@ -19,12 +20,16 @@ export interface EngineOptions {
 
 interface Snapshot {
   state: GameState;
+  preview: GameState | null;
   pending: Pending | null;
   error: EngineError | null;
   inputs: number;
 }
 
 const clone = <T>(v: T): T => structuredClone(v);
+
+/** An empty Lua table arrives as {} rather than []. */
+const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? v : v && typeof v === 'object' ? (Object.values(v) as T[]) : []);
 
 /** Values handed to Lua must never be null (wasmoon 1.16 crashes on it). */
 const lua = (v: unknown) => (v === null ? undefined : v);
@@ -43,6 +48,12 @@ export class Engine {
   state!: GameState;
   pending: Pending | null = null;
   error: EngineError | null = null;
+  /**
+   * While a script waits on `choose`, its half-done changes are rolled back
+   * (the script re-runs once the answer arrives). This keeps those changes so
+   * the screen can show them while the player decides.
+   */
+  private preview: GameState | null = null;
   /** Every input given so far; replaying them reproduces the game. */
   readonly inputs: Input[] = [];
 
@@ -83,13 +94,19 @@ export class Engine {
   input(inp: Input) {
     const p = this.pending;
     if (!p || this.error || this.state.finished) throw new Error('지금은 입력을 받을 수 없어요');
-    const snap: Snapshot = { state: clone(this.state), pending: p, error: null, inputs: this.inputs.length };
+    const snap: Snapshot = { state: clone(this.state), preview: this.preview, pending: p, error: null, inputs: this.inputs.length };
     const c = this.state.cursor;
     if (inp.kind === 'action') {
       if (p.kind !== 'action') throw new Error('Action을 고를 차례가 아니에요');
       const a = p.actions.find((x) => x.path[x.path.length - 1] === inp.node);
       const opt = a?.options[inp.option];
       if (!a || !opt) throw new Error(`고를 수 없는 Action이에요: ${inp.node}#${inp.option}`);
+      const node = this.nodeAt(a.path);
+      if (node.limit) {
+        const key = a.path.join('/');
+        this.state.uses[key] = (this.state.uses[key] ?? 0) + 1;
+      }
+      if (node.common) this.state.returnTo = [...c.path];
       this.state.cursor = { path: a.path, stage: 'execute', option: opt.value, answers: [] };
     } else {
       if (p.kind !== 'choose') throw new Error('선택지를 고를 차례가 아니에요');
@@ -113,6 +130,7 @@ export class Engine {
     const s = this.undoStack.pop();
     if (!s) return;
     this.state = s.state;
+    this.preview = s.preview;
     this.pending = s.pending;
     this.error = s.error;
     this.inputs.length = s.inputs;
@@ -123,16 +141,45 @@ export class Engine {
     do this.undo(); while (this.undoStack.length && this.pending?.kind !== 'action');
   }
 
+  /** What the screen should show: the in-progress state while a script waits for a choice. */
+  get view(): GameState {
+    return this.preview ?? this.state;
+  }
+
   /** Path of the node the game is at (for highlighting the loop graph). */
   get currentPath(): string[] {
     return this.state.cursor.path;
   }
 
   pieceLabel(id: string): string {
-    const pc = this.piece(id);
+    const pc = this.view.pieces[id] ?? this.piece(id);
     const t = this.def.pieceTypes[pc.type]!;
+    if (t.kind === 'die') return t.faces[pc.side]?.label ?? '?';
     if (typeof t.label === 'string') return t.label;
     return (pc.owner && t.label[pc.owner]) ?? pc.type;
+  }
+
+  /** Can `viewer` see the front of this component? Scripts always can; this is for the UI. */
+  isVisible(id: string, viewer: string | null): boolean {
+    const v = this.view;
+    const pc = v.pieces[id];
+    if (!pc || pc.face === 'down') return false;
+    if (!pc.zone) return true;
+    const z = this.def.zones[pc.zone]!;
+    switch (z.visibility) {
+      case 'public': return true;
+      case 'hidden': return false;
+      case 'owner': return viewer !== null && viewer === z.owner;
+      case 'topOnly': {
+        const list = v.contents[pc.zone]!;
+        return list[list.length - 1] === id;
+      }
+    }
+  }
+
+  /** Does the game have information some players must not see? */
+  get hasHiddenInfo(): boolean {
+    return Object.values(this.def.zones).some((z) => z.visibility === 'owner');
   }
 
   // ------------------------------------------------------------------
@@ -155,8 +202,10 @@ export class Engine {
       result: null,
       finished: false,
       log: [],
+      uses: {},
+      returnTo: null,
     };
-    for (const s of def.setup) this.createPiece(s.type, s.owner, s.zone);
+    for (const s of def.setup) for (let i = 0; i < s.count; i++) this.createPiece(s.type, s.owner, s.zone);
     try {
       const load = this.lua.global.get('__load') as (p: string) => void;
       for (const path of Object.keys(def.sources).sort()) load(path);
@@ -177,8 +226,26 @@ export class Engine {
     return loop;
   }
 
+  private nodeAt(path: string[]): NodeDef {
+    return this.loopAt(path).nodes[path[path.length - 1]!]!;
+  }
+
+  /** Entering a node resets the uses of actions limited "per" that node. */
+  private entered(nodeId: string) {
+    for (const key of Object.keys(this.state.uses)) {
+      if (this.nodeAt(key.split('/')).limit?.per === nodeId) delete this.state.uses[key];
+    }
+  }
+
+  private available(path: string[], node: NodeDef): ActionView | null {
+    if (node.limit && (this.state.uses[path.join('/')] ?? 0) >= node.limit.count) return null;
+    const options = this.options(node.script!);
+    return options.length ? { path, label: node.label, options } : null;
+  }
+
   private advance() {
     this.pending = null;
+    this.preview = null;
     try {
       this.step();
     } catch (e) {
@@ -208,6 +275,7 @@ export class Engine {
           case 'loop':
             if (node.script && !this.exec('onEnter', node.script)) return;
             this.state.cursor.path = [...this.state.cursor.path, node.loop!.start];
+            this.entered(node.loop!.start);
             continue;
           case 'phase':
             if (node.script && !this.exec('onEnter', node.script)) return;
@@ -226,15 +294,31 @@ export class Engine {
       }
 
       // stage 'after': leave the node
+      if (node.common) {
+        // a common action returns to where the player was waiting
+        const back = this.state.returnTo!;
+        this.state.returnTo = null;
+        this.state.cursor = { path: back, stage: 'after', option: null, answers: [] };
+        continue;
+      }
       const outs = loop.out[id]!;
       if (loop.nodes[outs[0]!]!.type === 'action') {
         if (this.state.result) return this.finish();
         const parent = c.path.slice(0, -1);
         const actions: ActionView[] = [];
         for (const target of outs) {
-          const an = loop.nodes[target]!;
-          const options = this.options(an.script!);
-          if (options.length) actions.push({ path: [...parent, target], label: an.label, options });
+          const a = this.available([...parent, target], loop.nodes[target]!);
+          if (a) actions.push(a);
+        }
+        // common actions of this loop and every loop around it
+        for (let depth = c.path.length - 1; depth >= 0; depth--) {
+          const prefix = c.path.slice(0, depth);
+          const l = this.loopAt([...prefix, '']);
+          for (const cid of l.common) {
+            if (node.exclude.includes(cid)) continue;
+            const a = this.available([...prefix, cid], l.nodes[cid]!);
+            if (a) actions.push(a);
+          }
         }
         if (!actions.length) throw new Error(`'${node.label}'에서 할 수 있는 Action이 하나도 없어요`);
         this.pending = { kind: 'action', player: this.state.current, actions };
@@ -258,6 +342,7 @@ export class Engine {
   private goto(target: string) {
     const s = this.state;
     s.cursor = { path: [...s.cursor.path.slice(0, -1), target], stage: 'enter', option: null, answers: [] };
+    this.entered(target);
     s.idle++;
     s.trail.push(s.cursor.path.join(' / '));
     if (s.trail.length > LOOP_LIMIT + 1) s.trail.shift();
@@ -286,9 +371,11 @@ export class Engine {
       if (!this.pendingChoose) return true;
       throw new Error(NEED_INPUT);
     } catch (e) {
+      const partial = this.state;
       this.state = snap;
       this.mode = 'effect';
       if (this.pendingChoose) {
+        this.preview = partial;
         this.pending = this.pendingChoose;
         return false;
       }
@@ -297,7 +384,7 @@ export class Engine {
   }
 
   private options(path: string): OptionView[] {
-    const raw = (this.run('options', path) ?? []) as { value: Json; label: string }[];
+    const raw = arr<{ value: Json; label: string }>(this.run('options', path));
     return raw.map((o) => ({ value: o.value, label: o.label, ref: refOf(o.value) }));
   }
 
@@ -316,17 +403,17 @@ export class Engine {
   }
 
   private createPiece(type: string, owner: string | null, zone: string): string {
-    if (!this.def.pieceTypes[type]) throw new Error(`없는 말 종류예요: ${type}`);
+    if (!this.def.pieceTypes[type]) throw new Error(`없는 컴포넌트 종류예요: ${type}`);
     if (!this.def.zones[zone]) throw new Error(`없는 존이에요: ${zone}`);
     const id = `p${this.state.nextId++}`;
-    this.state.pieces[id] = { id, type, owner, zone, props: {} };
+    this.state.pieces[id] = { id, type, owner, zone, props: {}, face: 'up', side: 0 };
     this.state.contents[zone]!.push(id);
     return id;
   }
 
   private piece(id: string) {
     const p = this.state.pieces[id];
-    if (!p) throw new Error(`이미 없어진 말이에요 (${id}). 제거되거나 다른 말로 바뀐 말을 쓰고 있지 않은지 확인하세요`);
+    if (!p) throw new Error(`이미 없어진 컴포넌트예요 (${id}). 제거되거나 다른 것으로 바뀐 컴포넌트를 쓰고 있지 않은지 확인하세요`);
     return p;
   }
 
@@ -403,7 +490,10 @@ export class Engine {
       zoneInfo: (id: string) => {
         const z = def.zones[id];
         if (!z) return undefined;
-        return { name: z.name, x: lua(z.x), y: lua(z.y), tags: [...z.tags], board: z.board };
+        return {
+          name: z.name, x: lua(z.x), y: lua(z.y), tags: [...z.tags], board: z.board,
+          owner: lua(z.owner), props: structuredClone(z.props), layout: z.layout, visibility: z.visibility,
+        };
       },
       zoneAt: (board: string, x: number, y: number) => {
         const b = def.boards.find((v) => v.id === board);
@@ -422,6 +512,19 @@ export class Engine {
       zonesWithTag: (board: string, tag: string) =>
         (def.boards.find((b) => b.id === board)?.zones ?? []).filter((z) => def.zones[z]!.tags.includes(tag)),
       zoneContents: (zone: string) => [...(this.state.contents[zone] ?? [])],
+      playerZone: (name: string, player: string) => {
+        const id = playerZoneId(name, player);
+        return def.zones[id] ? id : undefined;
+      },
+      shuffle: (zone: string) => {
+        this.assertMutable('shuffle');
+        const list = this.state.contents[zone];
+        if (!list) throw new Error(`없는 존이에요: ${zone}`);
+        for (let i = list.length - 1; i > 0; i--) {
+          const j = Math.floor(this.nextRandom() * (i + 1));
+          [list[i], list[j]] = [list[j]!, list[i]!];
+        }
+      },
       zoneAccepts: (zone: string, kind: string) => {
         const a = def.zones[zone]?.accepts ?? [];
         return a.length === 0 || a.includes(kind);
@@ -433,12 +536,37 @@ export class Engine {
       pieceZone: (id: string) => lua(this.piece(id).zone),
       pieceLabel: (id: string) => this.pieceLabel(id),
       pieceTags: (id: string) => [...def.pieceTypes[this.piece(id).type]!.tags],
+      pieceKind: (id: string) => def.pieceTypes[this.piece(id).type]!.kind,
+      pieceFace: (id: string) => this.piece(id).face,
+      pieceValue: (id: string) => {
+        const pc = this.piece(id);
+        const t = def.pieceTypes[pc.type]!;
+        return lua(t.kind === 'die' ? t.faces[pc.side]?.value : undefined);
+      },
+      pieceText: (id: string) => def.pieceTypes[this.piece(id).type]!.text,
+      flip: (id: string, face?: string) => {
+        this.assertMutable('flip');
+        const pc = this.piece(id);
+        pc.face = face === 'up' || face === 'down' ? face : pc.face === 'up' ? 'down' : 'up';
+      },
+      rollDie: (id: string) => {
+        this.assertMutable('roll');
+        const pc = this.piece(id);
+        const t = def.pieceTypes[pc.type]!;
+        if (t.kind !== 'die') throw new Error(`주사위가 아니에요: ${pc.type}`);
+        pc.side = Math.floor(this.nextRandom() * t.faces.length);
+        return lua(t.faces[pc.side]!.value);
+      },
       pieceExists: (id: string) => !!this.state.pieces[id],
-      pieces: (type?: string, owner?: string) =>
+      pieces: (type?: string, owner?: string, kind?: string) =>
         Object.values(this.state.pieces)
-          .filter((p) => (!type || p.type === type) && (!owner || p.owner === owner) && p.zone !== null)
+          .filter((p) => (!type || p.type === type) && (!owner || p.owner === owner) && p.zone !== null
+            && (!kind || def.pieceTypes[p.type]!.kind === kind))
           .map((p) => p.id),
-      getProp: (id: string, k: string) => lua(this.piece(id).props[k]),
+      getProp: (id: string, k: string) => {
+        const pc = this.piece(id);
+        return lua(k in pc.props ? pc.props[k] : def.pieceTypes[pc.type]!.props[k]);
+      },
       setProp: (id: string, k: string, v: Json) => {
         this.assertMutable('piece.props');
         if (v === undefined) delete this.piece(id).props[k];
@@ -448,12 +576,13 @@ export class Engine {
         this.assertMutable('create');
         return this.createPiece(type, owner ?? null, zone);
       },
-      move: (id: string, zone: string) => {
+      move: (id: string, zone: string, where?: string) => {
         this.assertMutable('move');
         if (!def.zones[zone]) throw new Error(`없는 존이에요: ${zone}`);
         this.detach(id);
         this.piece(id).zone = zone;
-        this.state.contents[zone]!.push(id);
+        if (where === 'bottom') this.state.contents[zone]!.unshift(id);
+        else this.state.contents[zone]!.push(id);
       },
       remove: (id: string) => {
         this.assertMutable('remove');
@@ -481,7 +610,7 @@ export class Engine {
         if (this.answerIdx < this.answers.length) return lua(this.answers[this.answerIdx++]);
         this.pendingChoose = {
           kind: 'choose', player: playerId, prompt,
-          options: options.map((v, i) => ({ value: v, label: labels[i] ?? '', ref: refOf(v) })),
+          options: arr<Json>(options).map((v, i) => ({ value: v, label: arr<string>(labels)[i] ?? '', ref: refOf(v) })),
         };
         throw new Error(NEED_INPUT);
       },

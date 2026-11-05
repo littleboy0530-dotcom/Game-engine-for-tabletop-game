@@ -1,0 +1,12 @@
+name: 포커 (텍사스 홀덤)
+players:
+  - { id: p1, name: 1번, color: "#2f6fb5" }
+  - { id: p2, name: 2번, color: "#b5562b" }
+  - { id: p3, name: 3번, color: "#3c8c4a" }
+
+# 52장. 카드의 rank(2~14), suit(S/H/D/C)는 props로 들어간다
+cards: cards.csv
+
+display:
+  player: { chips: 칩, bet: 이번 베팅, status: 상태 }
+  game: { pot: 팟, streetName: 단계 }

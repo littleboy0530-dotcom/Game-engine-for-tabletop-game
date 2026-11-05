@@ -1,0 +1,13 @@
+id,label,text,tags,cost,coins,points,color,count,zone
+copper,동전,코인 +1,보물,0,1,,#a8642c,30,supply_copper
+silver,은괴,코인 +2,보물,3,2,,#6b7a8a,20,supply_silver
+gold,금괴,코인 +3,보물,6,3,,#b8901f,12,supply_gold
+hut,오두막,승점 1,승점,2,,1,#3c8c4a,8,supply_hut
+manor,저택,승점 3,승점,5,,3,#3c8c4a,8,supply_manor
+citadel,성채,승점 6,승점,8,,6,#3c8c4a,8,supply_citadel
+square,마을 광장,카드 +1 / 액션 +2,액션,3,,,,10,supply_square
+merchant,상인,카드 +1 / 액션 +1 / 코인 +1,액션,3,,,,10,supply_merchant
+cart,수레,구매 +1 / 코인 +2,액션,4,,,,10,supply_cart
+scholar,학자,카드 +3,액션,4,,,,10,supply_scholar
+sweeper,정리꾼,손패에서 카드를 4장까지 폐기,액션,2,,,,10,supply_sweeper
+raider,약탈자,"카드 +2 / 다른 플레이어는 손패가 3장이 되도록 버림",액션;공격,5,,,#9b2c2c,10,supply_raider

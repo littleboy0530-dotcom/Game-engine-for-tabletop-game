@@ -1,0 +1,40 @@
+# 작은 영지: 준비 → (턴: 액션 단계 → 구매 단계 → 정리) → 종료 확인 → 다음 턴
+nodes:
+  start:   { type: start, pos: [0, 120] }
+  prepare: { type: phase, label: 준비, script: loop/prepare.lua, pos: [120, 120] }
+  turn:
+    type: loop
+    label: 턴
+    pos: [280, 120]
+    loop:
+      nodes:
+        start:      { type: start, pos: [0, 100] }
+        begin:      { type: phase, label: 턴 시작, script: loop/begin.lua, pos: [110, 100] }
+        actions:    { type: phase, label: 액션 단계, pos: [270, 100] }
+        playAction: { type: action, label: 액션 카드 내기, script: loop/play_action.lua, pos: [270, 0] }
+        endActions: { type: action, label: 액션 끝, script: loop/end_actions.lua, pos: [430, 100] }
+        buys:       { type: phase, label: 구매 단계, script: loop/buy_phase.lua, pos: [590, 100] }
+        buy:        { type: action, label: 사기, script: loop/buy.lua, pos: [590, 0] }
+        endTurn:    { type: action, label: 턴 끝, script: loop/end_turn.lua, pos: [750, 100] }
+        cleanup:    { type: phase, label: 정리, script: loop/cleanup.lua, pos: [900, 100] }
+        end:        { type: end, pos: [1040, 100] }
+      edges:
+        - [start, begin]
+        - [begin, actions]
+        - [actions, playAction]
+        - [actions, endActions]
+        - [playAction, actions]
+        - [endActions, buys]
+        - [buys, buy]
+        - [buys, endTurn]
+        - [buy, buys]
+        - [endTurn, cleanup]
+        - [cleanup, end]
+  check: { type: phase, label: 종료 확인, script: loop/check.lua, pos: [440, 120] }
+  end:   { type: end, pos: [600, 120] }
+edges:
+  - [start, prepare]
+  - [prepare, turn]
+  - [turn, check]
+  - [check, turn]
+  - [check, end]
