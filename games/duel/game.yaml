@@ -1,0 +1,14 @@
+name: 작은 결투 (TCG)
+players:
+  - { id: a, name: 초록 숲, color: "#3c8c4a" }
+  - { id: b, name: 붉은 산, color: "#b5562b" }
+
+cards: cards.csv
+
+scripts:
+  # 카드 능력: 지속 효과(modify), 트리거와 대체 효과(on), 순간 주문 효과(resolve)
+  components: components/cards.lua
+
+display:
+  player: { life: 생명, mana: 마나 }
+  card: { power: 공, toughness: 체, damage: 피해 }

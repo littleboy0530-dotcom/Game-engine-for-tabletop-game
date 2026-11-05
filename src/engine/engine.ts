@@ -220,6 +220,17 @@ export class Engine {
     return (pc.owner && t.label[pc.owner]) ?? pc.type;
   }
 
+  /** A component value with all modifiers applied (game:value), for showing on screen. */
+  valueOf(id: string, key: string): number | undefined {
+    if (!this.state.pieces[id]) return undefined;
+    try {
+      const v = (this.lua.global.get('__value') as (i: string, k: string) => unknown)(id, key);
+      return typeof v === 'number' ? v : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** A zone, including ones added during play (as shown on screen). */
   zone(id: string): ZoneDef | undefined {
     return this.def.zones[id] ?? this.view.zones[id];
@@ -311,14 +322,26 @@ export class Engine {
     return loop;
   }
 
+  private nodeExists(id: string, loop: LoopDef = this.def.loop): boolean {
+    return Object.values(loop.nodes).some((n) => n.id === id || (n.loop !== null && this.nodeExists(id, n.loop)));
+  }
+
   private nodeAt(path: string[]): NodeDef {
     return this.loopAt(path).nodes[path[path.length - 1]!]!;
   }
 
-  /** Entering a node resets the uses of actions limited "per" that node. */
+  /** Entering a node resets action limits and ends temporary effects tied to that node. */
   private entered(nodeId: string) {
     for (const key of Object.keys(this.state.uses)) {
       if (this.nodeAt(key.split('/')).limit?.per === nodeId) delete this.state.uses[key];
+    }
+    for (const pc of Object.values(this.state.pieces)) {
+      const list = pc.props.__boosts as { until: string | null }[] | undefined;
+      if (!list) continue;
+      const keep = list.filter((b) => b.until !== nodeId);
+      if (keep.length === list.length) continue;
+      if (keep.length) pc.props.__boosts = keep as unknown as Json;
+      else delete pc.props.__boosts;
     }
   }
 
@@ -692,6 +715,14 @@ export class Engine {
       },
       pieceText: (id: string) => def.pieceTypes[this.piece(id).type]!.text,
       pieceRot: (id: string) => this.piece(id).rot,
+      boosts: (id: string) => (this.piece(id).props.__boosts as Json[] | undefined) ?? [],
+      boost: (id: string, key: string, amount: number, until?: string) => {
+        this.assertMutable('boost');
+        if (until !== undefined && !this.nodeExists(until)) throw new Error(`boost: 없는 노드예요: ${until}`);
+        const pc = this.piece(id);
+        const list = (pc.props.__boosts as Json[] | undefined) ?? [];
+        pc.props.__boosts = [...list, { key, amount, until: until ?? null }];
+      },
       tileInfo: (id: string) => {
         const info = this.tileInfo(id);
         return { edges: info.edges, segments: info.segments.map((sg) => ({ id: sg.id, kind: sg.kind, sides: [...sg.sides] })) };

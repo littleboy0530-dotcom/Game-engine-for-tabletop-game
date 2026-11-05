@@ -27,11 +27,17 @@ export function ComponentView({ engine, id, visible, selectable, onClick, small 
     }
     const color = typeof t.props.color === 'string' && t.props.color ? t.props.color : undefined;
     const cost = t.props.cost;
+    const stats = engine.def.display.card
+      .map((d) => ({ ...d, v: (d.key in t.props || d.key in pc.props) ? engine.valueOf(id, d.key) : undefined }))
+      .filter((d) => d.v !== undefined && !(d.key === 'damage' && d.v === 0));
     return (
-      <div className={`card-view${cls}`} onClick={onClick} style={color ? { borderTopColor: color } : undefined} title={t.text || undefined}>
+      <div className={`card-view${cls}${pc.rot % 2 ? ' is-tapped' : ''}`} onClick={onClick} style={color ? { borderTopColor: color } : undefined} title={t.text || undefined}>
         {typeof cost === 'number' && <span className="card-cost">{cost}</span>}
         <span className="card-label" style={color ? { color } : undefined}>{engine.pieceLabel(id)}</span>
         {t.text && !small && <span className="card-text">{t.text}</span>}
+        {stats.length > 0 && (
+          <span className="card-stats">{stats.map((d) => `${d.label} ${d.v}`).join(' · ')}</span>
+        )}
       </div>
     );
   }

@@ -1,0 +1,56 @@
+# 작은 결투: (언탭과 뽑기 → 행동: 땅/주문/공격 → 전투) 턴 반복
+nodes:
+  start:   { type: start, pos: [0, 120] }
+  prepare: { type: phase, label: 준비, script: loop/prepare.lua, pos: [120, 120] }
+  turn:
+    type: loop
+    label: 턴
+    pos: [280, 120]
+    loop:
+      nodes:
+        start:   { type: start, pos: [0, 120] }
+        untap:   { type: phase, label: 언탭과 뽑기, script: loop/untap.lua, pos: [110, 120] }
+        main:    { type: phase, label: 행동, pos: [280, 120] }
+        land:    { type: action, label: 땅 내기, script: loop/land.lua, limit: { count: 1, per: turn }, pos: [450, 0] }
+        cast:    { type: action, label: 주문 쓰기, script: loop/cast.lua, pos: [450, 80] }
+        attack:  { type: action, label: 공격하기, script: loop/attack.lua, limit: { count: 1, per: turn }, pos: [450, 160] }
+        endTurn: { type: action, label: 턴 끝, script: loop/end_turn.lua, pos: [450, 240] }
+        combat:
+          type: loop
+          label: 전투
+          pos: [620, 160]
+          loop:
+            nodes:
+              start:   { type: start, pos: [0, 80] }
+              declare: { type: phase, label: 공격 선언, script: loop/declare.lua, pos: [110, 80] }
+              blocks:  { type: phase, label: 막기, script: loop/blocks.lua, pos: [270, 80] }
+              spells:  { type: phase, label: 순간 주문 (체인), script: loop/spells.lua, pos: [430, 80] }
+              damage:  { type: phase, label: 피해, script: loop/damage.lua, pos: [590, 80] }
+              end:     { type: end, pos: [740, 80] }
+            edges:
+              - [start, declare]
+              - [declare, blocks]
+              - [blocks, spells]
+              - [spells, damage]
+              - [damage, end]
+        end: { type: end, pos: [620, 300] }
+      edges:
+        - [start, untap]
+        - [untap, main]
+        - [main, land]
+        - [main, cast]
+        - [main, attack]
+        - [main, endTurn]
+        - [land, main]
+        - [cast, main]
+        - [attack, combat]
+        - [combat, main]
+        - [endTurn, end]
+  check: { type: phase, label: 승패 확인, script: loop/check.lua, pos: [440, 120] }
+  end:   { type: end, pos: [600, 120] }
+edges:
+  - [start, prepare]
+  - [prepare, turn]
+  - [turn, check]
+  - [check, turn]
+  - [check, end]

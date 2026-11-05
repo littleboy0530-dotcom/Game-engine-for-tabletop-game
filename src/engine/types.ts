@@ -136,7 +136,7 @@ export interface GameDef {
   /** All component types (pieces, cards, dice) by id. */
   pieceTypes: Record<string, PieceTypeDef>;
   /** Variables shown in the side panel. */
-  display: { player: DisplayVar[]; game: DisplayVar[] };
+  display: { player: DisplayVar[]; game: DisplayVar[]; card: DisplayVar[] };
   boards: BoardDef[];
   zones: Record<string, ZoneDef>;
   loop: LoopDef;

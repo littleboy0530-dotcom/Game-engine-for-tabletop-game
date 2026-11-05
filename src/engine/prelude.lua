@@ -335,7 +335,7 @@ end
 local registry = nil
 local function getRegistry()
   if registry then return registry end
-  registry = { types = {}, byEvent = {}, rules = {} }
+  registry = { types = {}, byEvent = {}, rules = {}, byModifier = {} }
   for _, path in ipairs(js.componentScripts()) do
     loadModule(path)
     local raw = rawModules[path]
@@ -347,6 +347,12 @@ local function getRegistry()
         for _, ev in ipairs(sortedKeys(def.on)) do
           registry.byEvent[ev] = registry.byEvent[ev] or {}
           table.insert(registry.byEvent[ev], t)
+        end
+      end
+      if type(def) == "table" and type(def.modify) == "table" then
+        for _, key in ipairs(sortedKeys(def.modify)) do
+          registry.byModifier[key] = registry.byModifier[key] or {}
+          table.insert(registry.byModifier[key], t)
         end
       end
     end
@@ -659,6 +665,54 @@ function game:respond(players, optionsFn, prompt, opts)
   return picks
 end
 
+------------------------------------------------------------------------
+-- 지속 효과 (수정값)
+-- game:value(c, "power")  기본값(props) + 일시 효과(boost) + 모든 modify 함수를 적용한 값
+-- 컴포넌트 종류 스크립트: modify = { power = function(self, target, value, game) return value + 1 end }
+-- game:boost(c, "power", 2, "turn")  "turn" 노드에 다시 들어갈 때까지 +2
+------------------------------------------------------------------------
+
+local function seatOrder(comps)
+  local cur, n = js.current(), #js.players()
+  local ci = player(cur).index
+  local function seat(c)
+    local o = c.owner
+    if not o then return n end
+    return (o.index - ci) % n
+  end
+  local function num(c) return tonumber(c.id:sub(2)) or 0 end
+  table.sort(comps, function(a, b)
+    local sa, sb = seat(a), seat(b)
+    if sa ~= sb then return sa < sb end
+    return num(a) < num(b)
+  end)
+  return comps
+end
+
+function game:value(c, key)
+  local v = c.props[key] or 0
+  for _, b in ipairs(js.boosts(c.id)) do
+    if b.key == key then v = v + b.amount end
+  end
+  local reg = getRegistry()
+  local types = reg.byModifier[key]
+  if types then
+    local comps = {}
+    for _, t in ipairs(types) do
+      for _, m in ipairs(list(js.pieces(t), piece)) do comps[#comps + 1] = m end
+    end
+    for _, m in ipairs(seatOrder(comps)) do
+      local r = judge(reg.types[m.type].modify[key], m, c, v, game)
+      if type(r) == "number" then v = r end
+    end
+  end
+  return v
+end
+
+function game:boost(c, key, amount, untilNode)
+  js.boost(c.id, key, amount, untilNode)
+end
+
 local function componentTable(t)
   local def = getRegistry().types[t]
   if type(def) == "table" then return def end
@@ -704,6 +758,16 @@ setmetatable(game, { __newindex = readonly("game") })
 ------------------------------------------------------------------------
 
 function __load(path) loadModule(path) return true end
+
+-- 화면에 보일 카드 값 (지속 효과 포함). 판정이라 상태를 바꾸지 않는다
+function __value(id, key)
+  resetEvents()
+  local prev = js.setMode("judge")
+  local ok, v = pcall(game.value, game, piece(id), key)
+  js.setMode(prev)
+  if ok then return v end
+  return nil
+end
 
 function __run(kind, path, arg)
   resetEvents()

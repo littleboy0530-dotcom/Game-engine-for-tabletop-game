@@ -1,4 +1,4 @@
-# 게임 만들기 가이드 (4단계 기준)
+# 게임 만들기 가이드 (5단계 기준)
 
 게임 하나는 `games/` 아래의 폴더 하나예요. 폴더를 추가하면 화면의 게임 목록에 자동으로 나타나요.
 
@@ -15,6 +15,7 @@
 | [`games/lanes`](../games/lanes) | 뒷면으로 몰래 내기, 솔로 모드의 스크립트 플레이어 |
 | [`games/castletown`](../games/castletown) | 타일 놓기: 열린 보드, 변 맞추기, 회전, 일꾼 놓기, 영역 점수 |
 | [`games/pyramid`](../games/pyramid) | 카드 피라미드: 덮인 카드, 드러나면 뒤집기 |
+| [`games/duel`](../games/duel) | TCG: 지속 효과, 일시 효과, 탭, 장착, 대체 효과, 순간 주문 체인 |
 
 ```
 games/my-game/
@@ -61,9 +62,10 @@ setup:                             # 처음 배치
   - { type: d6, zone: dice, count: 2 }                # 존 이름, 여러 개
   - { type: copper, zone: deck, perPlayer: true, count: 7 }  # 플레이어마다
 
-display:                           # 오른쪽 표에 보일 값
-  player: { coins: 코인, points: 승점 }   # player.vars의 키: 이름
+display:                           # 화면에 보일 값
+  player: { coins: 코인, points: 승점 }   # player.vars의 키: 이름 (오른쪽 표)
   game: { pot: 팟 }                       # game.vars의 키: 이름
+  card: { power: 공, toughness: 체 }      # 카드 위에 game:value로 계산한 값
 ```
 
 - 컴포넌트의 `props`는 **기본값**이에요. 스크립트에서 `card.props.cost`를 읽으면 기본값이 나오고, `card.props.cost = 1`로 바꾸면 그 카드만 바뀌어요.
@@ -321,6 +323,27 @@ return { on = {
 - 트리거가 또 트리거를 일으키며 **32번을 넘으면** 멈추고, 마지막 트리거 이름들을 보여줘요.
 - 트리거 안에서도 `game:choose`를 쓸 수 있어요.
 
+### 지속 효과와 일시 효과 (5단계)
+```lua
+-- components/cards.lua
+return {
+  bannerman = { modify = {
+    -- "내 다른 생물 공격력 +1": game:value(대상, "power")를 계산할 때마다 적용돼요
+    power = function(self, target, value, game)
+      if target ~= self and target.owner == self.owner then return value + 1 end
+      return value
+    end,
+  } },
+}
+```
+| 함수 | 뜻 |
+|---|---|
+| `game:value(c, "power")` | `c.props.power`에 일시 효과와 모든 `modify`를 적용한 값. 규칙에서는 props 대신 이걸 읽으세요 |
+| `game:boost(c, "power", 2, "turn")` | `turn` 노드에 다시 들어갈 때까지 +2 ("이번 턴 동안") |
+| `game:setRotation(card, 1)` | 카드를 90도 돌려요 (탭). 화면에도 돌아가 보여요 |
+- `modify` 함수는 판정 함수라 상태를 바꿀 수 없어요. 효과가 켜지는 조건(전장에 있을 때만 등)은 함수 안에서 확인하세요.
+- 장착은 `equipment.props.attachedTo = 생물`처럼 props에 대상을 저장하고, `modify`에서 비교하면 돼요.
+
 ## 6. 여러 사람에게 묻기
 
 ```lua
@@ -373,6 +396,7 @@ return {
 | `game:respond(players, fn, prompt, opts)` | 여러 사람에게 묻기 (6장) |
 | `game:rotate(c, n)` / `game:setRotation(c, r)` | 타일 돌리기 (시계 방향 90도 단위) |
 | `game:fits(tile, zone, r)` / `game:region(zone, part)` / `game:tileIn(zone)` | 타일 놓기 도우미 |
+| `game:value(c, key)` / `game:boost(c, key, n, node)` | 지속 효과를 적용한 값 / 일시 효과 |
 | `game:script(c)` | 컴포넌트 종류 스크립트의 테이블 (예: `game:script(card).onPlay(...)`) |
 | `game:choose(player, list, prompt)` | 플레이어에게 고르게 함 (실행 스크립트에서만) |
 | `game:moveCandidates(piece)` | 말 스크립트 후보 ∩ 존이 받아주는 곳 |

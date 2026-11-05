@@ -1118,3 +1118,21 @@ select {
   width: 72px;
   min-height: 100px;
 }
+
+.card-view.is-tapped {
+  transform: rotate(90deg);
+  margin: 0 14px;
+}
+
+.card-view.is-tapped.is-clickable:hover {
+  transform: rotate(90deg) translateX(-4px);
+}
+
+.card-stats {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1f1d1a;
+  background: #efe7d6;
+  border-radius: 4px;
+  padding: 1px 4px;
+}

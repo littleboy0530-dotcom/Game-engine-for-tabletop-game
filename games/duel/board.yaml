@@ -1,0 +1,8 @@
+id: duel
+coords: none
+zones:
+  - { id: stack, name: 쌓인 주문, layout: row }
+  - { id: deck, name: 덱, perPlayer: true, layout: pile, visibility: hidden }
+  - { id: hand, name: 손패, perPlayer: true, layout: row, visibility: owner }
+  - { id: field, name: 전장, perPlayer: true, layout: row }
+  - { id: grave, name: 무덤, perPlayer: true, layout: pile, visibility: topOnly }

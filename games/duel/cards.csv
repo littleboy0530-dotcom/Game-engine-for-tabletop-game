@@ -1,0 +1,10 @@
+id,label,text,tags,cost,power,toughness,amount,color,count,zone,perPlayer
+forest,숲,땅: 탭하면 마나 1,땅,0,,,,#3c8c4a,8,deck,true
+squire,견습 전사,,생물,1,1,1,,#8a5a2b,2,deck,true
+wolf,늑대,,생물,2,2,2,,#8a5a2b,3,deck,true
+bear,곰,,생물,3,3,3,,#8a5a2b,2,deck,true
+tortoise,가시 거북,받는 피해 -1,생물,2,1,3,,#2f7a3c,1,deck,true
+bannerman,깃발 기수,내 다른 생물 공격력 +1,생물,3,2,2,,#2f6fb5,1,deck,true
+sword,전사의 검,장착한 생물 공격력 +2,장비,2,,,,#6b7a8a,1,deck,true
+ambush,기습,순간: 생물 하나 공격력 +2 (이번 턴),순간,1,,,2,#b5562b,1,deck,true
+arrow,화살,순간: 생물이나 상대에게 피해 2,순간,1,,,2,#9b2c2c,1,deck,true

@@ -456,7 +456,12 @@ export function loadGame(files: Files): GameDef {
 
   const displayList = (v: unknown): DisplayVar[] =>
     Object.entries(asProps(v)).map(([key, label]) => ({ key, label: String(label) }));
-  const display = { player: displayList((g.display as Obj | undefined)?.player), game: displayList((g.display as Obj | undefined)?.game) };
+  const display = {
+    player: displayList((g.display as Obj | undefined)?.player),
+    game: displayList((g.display as Obj | undefined)?.game),
+    // values shown on each card, computed with game:value (modifiers included)
+    card: displayList((g.display as Obj | undefined)?.card),
+  };
 
   const sources: Record<string, string> = {};
   for (const [p, text] of Object.entries(files)) if (p.endsWith('.lua')) sources[p] = text;
