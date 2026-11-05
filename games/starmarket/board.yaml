@@ -1,0 +1,13 @@
+id: market
+coords: none
+zones:
+  - { id: centerDeck, name: 중앙 덱, layout: pile, visibility: hidden, group: 시장 }
+  - { id: center, name: 중앙 줄, layout: row, group: 시장 }
+  - { id: mystics, name: 신비술사, layout: pile, visibility: topOnly, group: 상설 }
+  - { id: infantry, name: 중보병, layout: pile, visibility: topOnly, group: 상설 }
+  - { id: cultist, name: 광신자, layout: pile, group: 상설 }
+  - { id: void, name: 공허, layout: pile, visibility: topOnly, group: 상설 }
+  - { id: deck, name: 덱, perPlayer: true, layout: pile, visibility: hidden }
+  - { id: hand, name: 손패, perPlayer: true, layout: row, visibility: owner }
+  - { id: play, name: 낸 카드, perPlayer: true, layout: row }
+  - { id: discard, name: 버린 카드, perPlayer: true, layout: pile, visibility: topOnly }

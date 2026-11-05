@@ -1,0 +1,29 @@
+# 세 갈래 전선: (뽑기 → 모두 몰래 내기 → 공개하고 승부) 라운드를 반복
+# Action 노드 없이, 페이즈 안에서 game:choose로 입력을 받는다
+nodes:
+  start:   { type: start, pos: [0, 100] }
+  prepare: { type: phase, label: 준비, script: loop/prepare.lua, pos: [120, 100] }
+  round:
+    type: loop
+    label: 라운드
+    pos: [280, 100]
+    loop:
+      nodes:
+        start:  { type: start, pos: [0, 100] }
+        draw:   { type: phase, label: 5장까지 뽑기, script: loop/draw.lua, pos: [120, 100] }
+        commit: { type: phase, label: 몰래 내기, script: loop/commit.lua, pos: [290, 100] }
+        reveal: { type: phase, label: 공개와 승부, script: loop/reveal.lua, pos: [460, 100] }
+        end:    { type: end, pos: [620, 100] }
+      edges:
+        - [start, draw]
+        - [draw, commit]
+        - [commit, reveal]
+        - [reveal, end]
+  check: { type: phase, label: 승리 확인, script: loop/check.lua, pos: [440, 100] }
+  end:   { type: end, pos: [600, 100] }
+edges:
+  - [start, prepare]
+  - [prepare, round]
+  - [round, check]
+  - [check, round]
+  - [check, end]

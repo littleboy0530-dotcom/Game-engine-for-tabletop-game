@@ -369,7 +369,10 @@ export function loadGame(files: Files): GameDef {
         tags: row.tags ? row.tags.split(';').map((t) => t.trim()).filter(Boolean) : [], props,
       }, csvPath), csvPath);
       if (row.zone && row.count) {
-        csvSetup.push({ type: row.id, zone: row.zone, count: Number(row.count), perPlayer: row.perPlayer === 'true' || row.perPlayer === '1' });
+        csvSetup.push({
+          type: row.id, zone: row.zone, count: Number(row.count), perPlayer: row.perPlayer === 'true' || row.perPlayer === '1',
+          where: `${csvPath}의 ${row.id} 줄`,
+        });
       }
     });
   }
@@ -384,7 +387,7 @@ export function loadGame(files: Files): GameDef {
   const setup: SetupEntry[] = [];
   [...asArray(g.setup), ...csvSetup].forEach((raw, i) => {
     const o = raw as Obj;
-    const where = `setup[${i}]`;
+    const where = o.where ? String(o.where) : `setup[${i}]`;
     const type = String(o.type);
     if (!pieceTypes[type]) fail('game.yaml', `${where}: 없는 컴포넌트 종류예요: ${type}`);
     const count = o.count === undefined ? 1 : Number(o.count);
@@ -399,7 +402,10 @@ export function loadGame(files: Files): GameDef {
           zone = gridZoneId(board.id, x, y);
         }
       } else zone = o.perPlayer ? playerZoneId(String(o.zone), owner!) : String(o.zone);
-      if (!zones[zone]) fail('game.yaml', `${where}: 없는 존이에요: ${zone}`);
+      if (!zones[zone]) {
+        const perPlayerHint = !o.perPlayer && zones[playerZoneId(String(o.zone), players[0]!.id)] ? ' (플레이어별 존이라면 perPlayer를 켜 주세요)' : '';
+        fail('game.yaml', `${where}: 없는 존이에요: ${zone}${perPlayerHint}`);
+      }
       return { type, owner, zone, count };
     };
     if (o.perPlayer) {

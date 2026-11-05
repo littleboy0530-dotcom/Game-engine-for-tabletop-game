@@ -1,0 +1,39 @@
+# 별빛 시장: 준비 → (턴: 카드 내기 / 영웅 사기 / 괴물 처치 → 정리) → 종료 확인
+nodes:
+  start:   { type: start, pos: [0, 120] }
+  prepare: { type: phase, label: 준비, script: loop/prepare.lua, pos: [120, 120] }
+  turn:
+    type: loop
+    label: 턴
+    pos: [280, 120]
+    loop:
+      nodes:
+        start:   { type: start, pos: [0, 120] }
+        begin:   { type: phase, label: 턴 시작, script: loop/begin.lua, pos: [110, 120] }
+        main:    { type: phase, label: 행동, pos: [270, 120] }
+        play:    { type: action, label: 카드 내기, script: loop/play.lua, pos: [440, 0] }
+        buy:     { type: action, label: 영웅 사기, script: loop/buy.lua, pos: [440, 80] }
+        defeat:  { type: action, label: 괴물 처치, script: loop/defeat.lua, pos: [440, 160] }
+        endTurn: { type: action, label: 턴 끝, script: loop/end_turn.lua, pos: [440, 240] }
+        cleanup: { type: phase, label: 정리, script: loop/cleanup.lua, pos: [620, 240] }
+        end:     { type: end, pos: [780, 240] }
+      edges:
+        - [start, begin]
+        - [begin, main]
+        - [main, play]
+        - [main, buy]
+        - [main, defeat]
+        - [main, endTurn]
+        - [play, main]
+        - [buy, main]
+        - [defeat, main]
+        - [endTurn, cleanup]
+        - [cleanup, end]
+  check: { type: phase, label: 종료 확인, script: loop/check.lua, pos: [440, 120] }
+  end:   { type: end, pos: [600, 120] }
+edges:
+  - [start, prepare]
+  - [prepare, turn]
+  - [turn, check]
+  - [check, turn]
+  - [check, end]

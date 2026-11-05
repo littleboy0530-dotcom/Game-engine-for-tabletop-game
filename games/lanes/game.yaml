@@ -1,0 +1,11 @@
+name: 세 갈래 전선 (동시 제출, 솔로)
+players:
+  - { id: king, name: 왕국, color: "#2f6fb5" }
+  # 솔로 모드: 그림자 군주는 스크립트가 고른다. 이 줄의 script를 지우면 두 사람이 할 수 있다
+  - { id: shadow, name: 그림자 군주, color: "#3a3a3a", script: ai/shadow.lua }
+
+cards: cards.csv
+
+display:
+  player: { influence: 영향력 }
+  game: { round: 라운드 }

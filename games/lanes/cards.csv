@@ -1,0 +1,10 @@
+id,label,power,color,count,zone,perPlayer
+peasant,농민,1,#6b7a8a,2,deck,true
+archer,궁수,2,#3c8c4a,2,deck,true
+spear,창병,3,#3c8c4a,2,deck,true
+rider,기병,4,#2f6fb5,2,deck,true
+knight,기사,5,#2f6fb5,2,deck,true
+mage,마법사,6,#7b4fb5,2,deck,true
+general,장군,7,#b5562b,2,deck,true
+captain,용병대장,8,#b5562b,2,deck,true
+royal,왕의 근위대,9,#9b2c2c,2,deck,true

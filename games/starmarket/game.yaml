@@ -1,0 +1,14 @@
+name: 별빛 시장 (덱빌딩, 중앙 줄)
+players:
+  - { id: a, name: 별이, color: "#2f6fb5" }
+  - { id: b, name: 달이, color: "#b5562b" }
+
+cards: cards.csv
+
+scripts:
+  # 중앙 줄에서 카드가 빠지면 자동으로 채우는 규칙 (이벤트 리스너)
+  listeners: rules/refill.lua
+
+display:
+  player: { runes: 룬, might: 힘, honor: 명예, score: 점수 }
+  game: { honorPool: 남은 명예 }

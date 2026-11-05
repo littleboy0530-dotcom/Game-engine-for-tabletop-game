@@ -1,0 +1,10 @@
+# 세 갈래 전선. 가운데 평원은 이기면 영향력 2, 양쪽은 1
+id: front
+coords: none
+zones:
+  - { id: deck, name: 덱, perPlayer: true, layout: pile, visibility: hidden }
+  - { id: hand, name: 손패, perPlayer: true, layout: row, visibility: owner }
+  - { id: left, name: 왼쪽 산길, perPlayer: true, layout: row, props: { worth: 1 } }
+  - { id: mid, name: 가운데 평원, perPlayer: true, layout: row, props: { worth: 2 } }
+  - { id: right, name: 오른쪽 강변, perPlayer: true, layout: row, props: { worth: 1 } }
+  - { id: discard, name: 버린 카드, perPlayer: true, layout: pile, visibility: topOnly }
