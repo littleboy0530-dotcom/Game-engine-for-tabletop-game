@@ -338,7 +338,9 @@ export function loadGame(files: Files): GameDef {
   const players: PlayerDef[] = asArray(g.players).map((p, i) => {
     const o = p as Obj;
     if (!o.id) fail('game.yaml', `players[${i}]에 id가 필요해요`);
-    return { id: String(o.id), name: String(o.name ?? o.id), color: String(o.color ?? '#888') };
+    const script = o.script ? String(o.script) : null;
+    if (script && files[script] === undefined) fail('game.yaml', `players[${i}]의 스크립트 파일이 없어요: ${script}`);
+    return { id: String(o.id), name: String(o.name ?? o.id), color: String(o.color ?? '#888'), script };
   });
   if (!players.length) fail('game.yaml', 'players가 비어 있어요');
 
@@ -410,9 +412,11 @@ export function loadGame(files: Files): GameDef {
   });
 
   const scripts = (g.scripts ?? {}) as Obj;
-  const pieceScript = scripts.pieces ? String(scripts.pieces) : null;
+  // scripts.pieces (one file) and scripts.components (list) both hold per-type tables
+  const componentScripts = [...asStrings(scripts.pieces), ...asStrings(scripts.components)];
+  const listenerScripts = asStrings(scripts.listeners);
   const zoneScript = scripts.zones ? String(scripts.zones) : null;
-  for (const s of [pieceScript, zoneScript]) {
+  for (const s of [...componentScripts, ...listenerScripts, zoneScript]) {
     if (s && files[s] === undefined) fail('game.yaml', `스크립트 파일이 없어요: ${s}`);
   }
 
@@ -425,6 +429,6 @@ export function loadGame(files: Files): GameDef {
 
   return {
     name: String(g.name ?? '이름 없는 게임'), players, pieceTypes, display, boards, zones, loop, setup,
-    sources, pieceScript, zoneScript,
+    sources, componentScripts, listenerScripts, zoneScript,
   };
 }

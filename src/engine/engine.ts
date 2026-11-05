@@ -16,6 +16,8 @@ export interface EngineOptions {
   seed?: number;
   /** Browser builds pass the URL of wasmoon's glue.wasm. */
   wasmUrl?: string;
+  /** Let script players answer automatically (off while replaying a recorded log). */
+  autoplay?: boolean;
 }
 
 interface Snapshot {
@@ -60,6 +62,7 @@ export class Engine {
   private readonly lua: LuaEngine;
   private readonly run: (kind: string, path: string, arg?: unknown) => unknown;
   private mode: Mode = 'effect';
+  private auto = true;
   private answers: Json[] = [];
   private answerIdx = 0;
   private pendingChoose: Pending | null = null;
@@ -69,6 +72,7 @@ export class Engine {
     const factory = new LuaFactory(opts.wasmUrl);
     const luaEngine = await factory.createEngine({ enableProxy: false, injectObjects: false });
     const engine = new Engine(def, luaEngine, opts.seed ?? Date.now() % 2147483647);
+    engine.auto = opts.autoplay !== false;
     engine.start();
     return engine;
   }
@@ -90,8 +94,61 @@ export class Engine {
   // public API
   // ------------------------------------------------------------------
 
-  /** Give the answer to the current pending request. */
+  /** Give the answer to the current pending request. Script players then take their turns. */
   input(inp: Input) {
+    this.apply(inp);
+    this.autoplay();
+  }
+
+  /** Turn script players on or off; turning on lets them answer a pending request. */
+  setAutoplay(on: boolean) {
+    this.auto = on;
+    this.autoplay();
+  }
+
+  /** Is this player decided by a script (automa)? */
+  isScripted(playerId: string | null | undefined): boolean {
+    return !!this.def.players.find((p) => p.id === playerId)?.script;
+  }
+
+  /** Let script players answer their own requests. */
+  private autoplay() {
+    if (!this.auto) return;
+    for (let n = 0; this.pending && !this.error && !this.state.finished; n++) {
+      const pl = this.def.players.find((p) => p.id === this.pending!.player);
+      if (!pl?.script) return;
+      if (n >= 1000) {
+        this.error = { message: '스크립트 플레이어가 1000번 연속으로 골랐어요. 사람 차례가 오지 않는지 확인하세요', path: [...this.state.cursor.path] };
+        this.pending = null;
+        return;
+      }
+      const p = this.pending;
+      const choices = p.kind === 'action'
+        ? p.actions.flatMap((a) => a.options.map((o, i) => ({
+          label: o.label || a.label, value: o.value, action: a.path[a.path.length - 1]!,
+          input: { kind: 'action' as const, node: a.path[a.path.length - 1]!, option: i },
+        })))
+        : p.options.map((o, i) => ({ label: o.label, value: o.value, action: undefined, input: { kind: 'choose' as const, option: i } }));
+      let idx: number;
+      try {
+        const req = { player: pl.id, kind: p.kind, prompt: p.kind === 'choose' ? p.prompt : '', choices: choices.map(({ input: _, ...c }) => c) };
+        idx = Number(this.run('decide', pl.script, req));
+      } catch (e) {
+        this.error = { message: this.messageOf(e), path: [...this.state.cursor.path] };
+        this.pending = null;
+        return;
+      }
+      const c = choices[idx - 1];
+      if (!c) {
+        this.error = { message: `${pl.script}: decide가 없는 선택지(${idx})를 골랐어요`, path: [...this.state.cursor.path] };
+        this.pending = null;
+        return;
+      }
+      this.apply(c.input);
+    }
+  }
+
+  private apply(inp: Input) {
     const p = this.pending;
     if (!p || this.error || this.state.finished) throw new Error('지금은 입력을 받을 수 없어요');
     const snap: Snapshot = { state: clone(this.state), preview: this.preview, pending: p, error: null, inputs: this.inputs.length };
@@ -138,7 +195,8 @@ export class Engine {
 
   /** Undo back to the last point where the player picked an Action. */
   undoToAction() {
-    do this.undo(); while (this.undoStack.length && this.pending?.kind !== 'action');
+    do this.undo();
+    while (this.undoStack.length && (this.pending?.kind !== 'action' || this.isScripted(this.pending.player)));
   }
 
   /** What the screen should show: the in-progress state while a script waits for a choice. */
@@ -214,6 +272,7 @@ export class Engine {
       return;
     }
     this.advance();
+    this.autoplay();
   }
 
   // ------------------------------------------------------------------
@@ -452,7 +511,9 @@ export class Engine {
         return prev;
       },
       source: (path: string) => lua(def.sources[path]),
-      componentScript: (kind: string) => lua(kind === 'pieces' ? def.pieceScript : kind === 'zones' ? def.zoneScript : null),
+      componentScripts: () => [...def.componentScripts],
+      listenerScripts: () => [...def.listenerScripts],
+      zoneScript: () => lua(def.zoneScript),
       log: (text: string) => {
         if (this.mode === 'sim') return;
         this.state.log.push(String(text));
@@ -637,10 +698,12 @@ export class Engine {
 
 /** Rebuild a game by replaying inputs from scratch (same seed, same result). */
 export async function replay(def: GameDef, seed: number, inputs: Input[], opts: EngineOptions = {}) {
-  const e = await Engine.create(def, { ...opts, seed });
+  // the log already holds the script players' answers, so don't let them answer again
+  const e = await Engine.create(def, { ...opts, seed, autoplay: false });
   for (const i of inputs) {
     if (e.error || !e.pending) break;
     e.input(i);
   }
+  e.setAutoplay(opts.autoplay !== false);
   return e;
 }

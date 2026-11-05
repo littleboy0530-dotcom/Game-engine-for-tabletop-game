@@ -9,6 +9,8 @@ export interface PlayerDef {
   id: string;
   name: string;
   color: string;
+  /** Lua script that decides for this player (solo-mode automa). Null = a person. */
+  script: string | null;
 }
 
 export type ComponentKind = 'piece' | 'card' | 'die';
@@ -124,8 +126,10 @@ export interface GameDef {
   setup: SetupEntry[];
   /** Lua scripts by path relative to the game folder. */
   sources: Record<string, string>;
-  /** Optional script with per-piece-type functions (moveCandidates). */
-  pieceScript: string | null;
+  /** Scripts with per-component-type tables (moveCandidates, on = { event = fn }, ...). */
+  componentScripts: string[];
+  /** Scripts with rule-level listeners: return { on = { event = fn } }. */
+  listenerScripts: string[];
   /** Optional script with per-zone-tag functions (canAccept). */
   zoneScript: string | null;
 }

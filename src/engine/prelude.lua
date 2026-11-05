@@ -275,6 +275,7 @@ local base = {
 }
 
 local modules = {}
+local rawModules = {} -- the tables scripts returned, for iterating with pairs
 
 local function loadModule(path)
   local m = modules[path]
@@ -296,9 +297,49 @@ local function loadModule(path)
     __newindex = function(_, k) error(path .. "의 '" .. tostring(k) .. "'는 실행 중에 바꿀 수 없어요", 2) end,
   })
   modules[path] = m
+  rawModules[path] = result
   return m
 end
 base.use = loadModule
+
+local function sortedKeys(t)
+  local keys = {}
+  for k in pairs(t) do keys[#keys + 1] = k end
+  table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+  return keys
+end
+
+-- Per-type component tables from all component scripts, and which types listen to which events.
+-- Keys are sorted: Lua's pairs order is not fixed, and replays must be exact.
+local registry = nil
+local function getRegistry()
+  if registry then return registry end
+  registry = { types = {}, byEvent = {}, rules = {} }
+  for _, path in ipairs(js.componentScripts()) do
+    loadModule(path)
+    local raw = rawModules[path]
+    for _, t in ipairs(sortedKeys(raw)) do
+      local def = raw[t]
+      if registry.types[t] then error(path .. ": 컴포넌트 종류 '" .. t .. "'의 스크립트가 두 군데 있어요", 0) end
+      registry.types[t] = def
+      if type(def) == "table" and type(def.on) == "table" then
+        for _, ev in ipairs(sortedKeys(def.on)) do
+          registry.byEvent[ev] = registry.byEvent[ev] or {}
+          table.insert(registry.byEvent[ev], t)
+        end
+      end
+    end
+  end
+  for _, path in ipairs(js.listenerScripts()) do
+    loadModule(path)
+    local on = rawModules[path].on or {}
+    for _, ev in ipairs(sortedKeys(on)) do
+      registry.rules[ev] = registry.rules[ev] or {}
+      table.insert(registry.rules[ev], { fn = on[ev], label = path })
+    end
+  end
+  return registry
+end
 
 ------------------------------------------------------------------------
 -- game API
@@ -328,14 +369,23 @@ function game:components(ctype, owner) return list(js.pieces(ctype, owner and ow
 function game:create(ptype, owner, z)
   return piece(js.create(ptype, owner and owner.id, z.id))
 end
--- where: "top"(기본) 또는 "bottom"
-function game:move(p, z, where) js.move(p.id, z.id, where) end
+-- where: "top"(기본) 또는 "bottom". 옮기면 "moved" 이벤트가 난다
+function game:move(p, z, where)
+  local from = p.zone
+  js.move(p.id, z.id, where)
+  game:emit("moved", { component = p, from = from, to = z })
+end
 function game:remove(p) js.remove(p.id) end
 function game:shuffle(z) js.shuffle(z.id) end
 function game:flip(p, face) js.flip(p.id, face) end
 -- game:roll(6) → 1~6 숫자, game:roll(주사위) → 주사위를 굴리고 나온 면의 값
+-- 주사위를 굴리면 "rolled" 이벤트가 나고, 리스너가 event.value를 바꿀 수 있다
 function game:roll(x)
-  if type(x) == "table" and getmetatable(x) == PieceMT then return js.rollDie(x.id) end
+  if type(x) == "table" and getmetatable(x) == PieceMT then
+    local value = js.rollDie(x.id)
+    local e = game:emit("rolled", { die = x, value = value, player = game:currentPlayer() })
+    return e.value
+  end
   return js.roll(x or 6)
 end
 function game:log(...) base.print(...) end
@@ -358,15 +408,169 @@ function game:simulate(f)
   return __decode(js.simulate(function() return __encode(f(game)) end))
 end
 
-local function scriptTable(kind)
-  local path = js.componentScript(kind)
+------------------------------------------------------------------------
+-- Events and triggers
+--
+-- game:emit(name, event)  일어난 일을 알린다. 리스너(트리거)는 큐에 쌓였다가
+--                          먼저 쌓인 것부터 실행된다 (game:chain 안에서는 나중 것부터)
+-- game:before(name, event) 일어나기 전에 묻는다. 리스너가 바로 실행되며
+--                          event의 값을 바꾸거나 event.cancel = true로 막을 수 있다
+------------------------------------------------------------------------
+
+local TRIGGER_LIMIT = 32
+local events = { queue = {}, processing = false, holding = false, lifo = false, count = 0, trace = {} }
+
+local function resetEvents()
+  events.queue, events.processing, events.holding, events.lifo, events.count, events.trace = {}, false, false, false, 0, {}
+end
+
+local function listenersFor(name)
+  local reg = getRegistry()
+  local out = {}
+  for _, r in ipairs(reg.rules[name] or {}) do out[#out + 1] = { fn = r.fn, label = r.label } end
+  local types = reg.byEvent[name]
+  if types then
+    local comps = {}
+    for _, t in ipairs(types) do
+      for _, c in ipairs(list(js.pieces(t), piece)) do comps[#comps + 1] = c end
+    end
+    -- 현재 플레이어부터 턴 순서대로, 주인 없는 것은 마지막, 같은 자리 안에서는 만든 순서대로
+    local cur, n = js.current(), #js.players()
+    local function seat(c)
+      local o = c.owner
+      if not o then return n end -- 주인 없는 컴포넌트는 플레이어들 다음
+      local ci = player(cur).index
+      return (o.index - ci) % n
+    end
+    local function num(c) return tonumber(c.id:sub(2)) or 0 end
+    table.sort(comps, function(a, b)
+      local sa, sb = seat(a), seat(b)
+      if sa ~= sb then return sa < sb end
+      return num(a) < num(b)
+    end)
+    for _, c in ipairs(comps) do
+      out[#out + 1] = { fn = reg.types[c.type].on[name], self = c, label = c.label }
+    end
+  end
+  return out
+end
+
+local function runListener(e)
+  if e.self then e.fn(e.self, game, e.event) else e.fn(game, e.event) end
+end
+
+local function drain()
+  events.processing = true
+  local ok, err = pcall(function()
+    while #events.queue > 0 do
+      local e = table.remove(events.queue, 1)
+      events.count = events.count + 1
+      events.trace[#events.trace + 1] = e.label .. "(" .. e.event.name .. ")"
+      if events.count > TRIGGER_LIMIT then
+        local last = {}
+        for i = math.max(1, #events.trace - 7), #events.trace do last[#last + 1] = events.trace[i] end
+        error("트리거 연쇄가 " .. TRIGGER_LIMIT .. "번을 넘어서 멈췄어요. 마지막 트리거: " .. table.concat(last, " → "), 0)
+      end
+      runListener(e)
+    end
+  end)
+  events.queue, events.processing, events.count, events.trace = {}, false, 0, {}
+  if not ok then error(err, 0) end
+end
+
+function game:emit(name, event)
+  event = event or {}
+  event.name = name
+  local ls = listenersFor(name)
+  for _, e in ipairs(ls) do
+    e.event = event
+    if events.lifo then table.insert(events.queue, 1, e) else events.queue[#events.queue + 1] = e end
+  end
+  if not events.processing and not events.holding and #events.queue > 0 then drain() end
+  return event
+end
+
+function game:before(name, event)
+  event = event or {}
+  event.name = name
+  for _, e in ipairs(listenersFor(name)) do
+    if event.cancel then break end
+    e.event = event
+    runListener(e)
+  end
+  return event
+end
+
+-- 안에서 일어난 트리거를 모았다가 나중 것부터 처리한다 (TCG의 체인)
+function game:chain(f)
+  local prevLifo, prevHold = events.lifo, events.holding
+  events.lifo, events.holding = true, true
+  local ok, err = pcall(f, game)
+  events.lifo, events.holding = prevLifo, prevHold
+  if not ok then error(err, 0) end
+  if not events.processing and not events.holding and #events.queue > 0 then drain() end
+end
+
+------------------------------------------------------------------------
+-- 반응 창구: 여러 플레이어가 서로 모르게 고르고, 우선순위로 받아들일 것을 정한다
+-- opts.priority = { "론", "퐁", "치" }, opts.accept = 1, opts.pass = "패스" (false면 패스 없음)
+------------------------------------------------------------------------
+
+local function choiceLabel(c)
+  if type(c) == "table" and c.label then return c.label end
+  return describe(c)
+end
+
+function game:respond(players, optionsFn, prompt, opts)
+  opts = opts or {}
+  local passLabel = opts.pass
+  if passLabel == nil then passLabel = "패스" end
+  local picks = {}
+  for i, p in ipairs(players) do
+    local options = optionsFn(p) or {}
+    if #options > 0 then
+      local list2 = {}
+      for j, v in ipairs(options) do list2[j] = v end
+      if passLabel then list2[#list2 + 1] = passLabel end
+      local c = game:choose(p, list2, prompt)
+      if not (passLabel and c == passLabel) then picks[#picks + 1] = { player = p, choice = c, order = i } end
+    end
+  end
+  if opts.priority then
+    local rank = {}
+    for i, v in ipairs(opts.priority) do rank[v] = i end
+    table.sort(picks, function(a, b)
+      local ra, rb = rank[choiceLabel(a.choice)] or math.huge, rank[choiceLabel(b.choice)] or math.huge
+      if ra ~= rb then return ra < rb end
+      return a.order < b.order
+    end)
+  end
+  if opts.accept then
+    while #picks > opts.accept do table.remove(picks) end
+  end
+  return picks
+end
+
+local function componentTable(t)
+  local def = getRegistry().types[t]
+  if type(def) == "table" then return def end
+  return {}
+end
+
+local function zoneScripts()
+  local path = js.zoneScript()
   if not path then return {} end
   return loadModule(path)
 end
 
+-- 컴포넌트 종류 스크립트의 함수 (예: 카드 효과)를 가져온다
+function game:script(c)
+  return componentTable(type(c) == "table" and c.type or c)
+end
+
 function game:canEnter(p, z)
   if not js.zoneAccepts(z.id, "piece") then return false end
-  local zs = scriptTable("zones")
+  local zs = zoneScripts()
   for _, tag in ipairs(z.tags) do
     local s = zs[tag]
     if s and s.canAccept and not judge(s.canAccept, z, p, game) then return false end
@@ -375,8 +579,8 @@ function game:canEnter(p, z)
 end
 
 function game:moveCandidates(p)
-  local s = scriptTable("pieces")[p.type]
-  if not s or not s.moveCandidates then return {} end
+  local s = componentTable(p.type)
+  if not s.moveCandidates then return {} end
   local cands = judge(s.moveCandidates, p, game) or {}
   local out = {}
   for _, z in ipairs(cands) do
@@ -394,8 +598,23 @@ setmetatable(game, { __newindex = readonly("game") })
 function __load(path) loadModule(path) return true end
 
 function __run(kind, path, arg)
+  resetEvents()
   local m = loadModule(path)
   local p = game:currentPlayer()
+  if kind == "decide" then
+    -- 스크립트 플레이어: arg = { player, kind, prompt, choices = { {label, value, action}, ... } }
+    if not m.decide then error(path .. ": 스크립트 플레이어에는 decide 함수가 필요해요", 0) end
+    local req = arg
+    local choices = {}
+    for i, c in ipairs(req.choices) do
+      choices[i] = { label = c.label, value = __decode(c.value), action = c.action, index = i }
+    end
+    local who = player(req.player)
+    local pick = judge(m.decide, game, who, { kind = req.kind, prompt = req.prompt, choices = choices })
+    if type(pick) == "number" then return pick end
+    if type(pick) == "table" and pick.index then return pick.index end
+    error(path .. ": decide는 choices 중 하나(또는 번호)를 돌려줘야 해요", 0)
+  end
   if kind == "onEnter" then
     if m.onEnter then m.onEnter(game, p) end
     return true
